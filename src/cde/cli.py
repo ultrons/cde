@@ -20,6 +20,9 @@ _COMMANDS = [
     "init",
     "build",
     "run",
+    "logs",
+    "shell",
+    "reap",
     "history",
     "annotate",   # registers annotate / hypothesize / tag / untag
     "compare",

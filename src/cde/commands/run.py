@@ -96,6 +96,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       ),
   )
   p.add_argument(
+      "--wait",
+      action="store_true",
+      help=(
+          "After applying, tail the JobSet's logs and update history when"
+          " it finishes. Equivalent to: cde run ... && cde logs <tag>."
+      ),
+  )
+  p.add_argument(
       "--render-only",
       action="store_true",
       help="render the manifest to stdout and exit (no apply, no record)",
@@ -321,6 +329,17 @@ def run(args: argparse.Namespace) -> int:
 
   log.ok("submitted %s as %s/%s", args.tag, namespace, args.tag)
   log.detail("kubectl logs -n %s -l cde.io/run-id=%s --prefix=true -f", namespace, args.tag)
+
+  if args.wait:
+    # Reuse the cde logs path so behavior + status update logic is identical.
+    log.step("--wait: tailing until done; Ctrl-C to detach")
+    from cde.commands import logs as logs_cmd  # local import to avoid cycle
+
+    wait_args = argparse.Namespace(
+        run_id=args.tag, follow=True, since=None,
+    )
+    return logs_cmd.run(wait_args)
+
   return 0
 
 
