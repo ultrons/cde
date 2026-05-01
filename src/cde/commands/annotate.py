@@ -33,11 +33,14 @@ def _err_no_such_run(conn, run_id: str) -> None:
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  # Late imports to avoid an import cycle through cli.py.
+  from cde import cli, completers
+
   pa = subparsers.add_parser(
       "annotate",
       help="Replace the notes on a run (use $EDITOR if no -m and on a TTY).",
   )
-  pa.add_argument("run_id")
+  cli.set_completer(pa.add_argument("run_id"), completers.run_id_completer)
   pa.add_argument("-m", "--message", default=None)
   pa.set_defaults(func=lambda args: _run_set_field(args, "notes"))
 
@@ -45,18 +48,18 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       "hypothesize",
       help="Replace the hypothesis on a run.",
   )
-  ph.add_argument("run_id")
+  cli.set_completer(ph.add_argument("run_id"), completers.run_id_completer)
   ph.add_argument("-m", "--message", default=None)
   ph.set_defaults(func=lambda args: _run_set_field(args, "hypothesis"))
 
   pt = subparsers.add_parser("tag", help="Add a tag to a run.")
-  pt.add_argument("run_id")
-  pt.add_argument("tag")
+  cli.set_completer(pt.add_argument("run_id"), completers.run_id_completer)
+  cli.set_completer(pt.add_argument("tag"), completers.tag_completer)
   pt.set_defaults(func=_run_tag)
 
   pu = subparsers.add_parser("untag", help="Remove a tag from a run.")
-  pu.add_argument("run_id")
-  pu.add_argument("tag")
+  cli.set_completer(pu.add_argument("run_id"), completers.run_id_completer)
+  cli.set_completer(pu.add_argument("tag"), completers.tag_completer)
   pu.set_defaults(func=_run_untag)
 
 

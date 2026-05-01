@@ -17,11 +17,13 @@ from cde import config, db, k8s, logging as log, paths, suggest
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "logs",
       help="Tail a run's pods. After it finishes, refresh the history row.",
   )
-  p.add_argument("run_id")
+  cli.set_completer(p.add_argument("run_id"), completers.run_id_completer)
   p.add_argument(
       "--no-follow",
       dest="follow",

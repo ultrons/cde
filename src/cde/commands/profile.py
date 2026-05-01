@@ -14,11 +14,13 @@ from cde import config, db, logging as log, paths, suggest
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser("profile", help="Profile-related verbs.")
   sp = p.add_subparsers(dest="profile_cmd", required=True)
 
   pp = sp.add_parser("path", help="Print the profile_uri stored for a run.")
-  pp.add_argument("run_id")
+  cli.set_completer(pp.add_argument("run_id"), completers.run_id_completer)
   pp.set_defaults(func=_path)
 
 

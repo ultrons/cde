@@ -18,14 +18,19 @@ from cde import config, db, k8s, logging as log, paths, suggest
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "shell",
       help="k9s into the project's namespace, or kubectl exec into a run's pod.",
   )
-  p.add_argument(
-      "run_id",
-      nargs="?",
-      help="(with --exec) which run to exec into",
+  cli.set_completer(
+      p.add_argument(
+          "run_id",
+          nargs="?",
+          help="(with --exec) which run to exec into",
+      ),
+      completers.run_id_completer,
   )
   p.add_argument(
       "--exec",

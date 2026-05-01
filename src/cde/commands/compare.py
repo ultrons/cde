@@ -18,12 +18,14 @@ from cde import config, db, logging as log, paths
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "compare",
       help="Show what differs between two runs (overrides, image, notes).",
   )
-  p.add_argument("a", help="run id A")
-  p.add_argument("b", help="run id B")
+  cli.set_completer(p.add_argument("a", help="run id A"), completers.run_id_completer)
+  cli.set_completer(p.add_argument("b", help="run id B"), completers.run_id_completer)
   p.add_argument("--json", action="store_true", help="emit JSON delta")
   p.set_defaults(func=run)
 

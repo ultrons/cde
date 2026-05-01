@@ -14,11 +14,13 @@ from cde import config, db, logging as log, paths
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "lineage",
       help="Walk the parent_run chain back to the root run.",
   )
-  p.add_argument("run_id")
+  cli.set_completer(p.add_argument("run_id"), completers.run_id_completer)
   p.set_defaults(func=run)
 
 

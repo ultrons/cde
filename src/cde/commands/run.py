@@ -36,6 +36,8 @@ from cde import preferences as prefs_mod
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "run",
       help="Render the template, apply via kubectl, record in history.",
@@ -49,11 +51,14 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       default="",
       help="what you set out to test with this run",
   )
-  p.add_argument(
-      "--value-class",
-      dest="value_class",
-      default=None,
-      help="override defaults.value-class for this run",
+  cli.set_completer(
+      p.add_argument(
+          "--value-class",
+          dest="value_class",
+          default=None,
+          help="override defaults.value-class for this run",
+      ),
+      completers.value_class_completer,
   )
   p.add_argument(
       "--declared-minutes",
@@ -76,16 +81,19 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       metavar="KEY=VALUE",
       help="template variable override (repeatable)",
   )
-  p.add_argument(
-      "--inherit",
-      dest="inherit_from",
-      default=None,
-      metavar="RUN_ID",
-      help=(
-          "Copy --set overrides from <RUN_ID> as the base for this run."
-          " --set values on this run override inherited keys."
-          " Records parent_run for cde lineage."
+  cli.set_completer(
+      p.add_argument(
+          "--inherit",
+          dest="inherit_from",
+          default=None,
+          metavar="RUN_ID",
+          help=(
+              "Copy --set overrides from <RUN_ID> as the base for this run."
+              " --set values on this run override inherited keys."
+              " Records parent_run for cde lineage."
+          ),
       ),
+      completers.run_id_completer,
   )
   p.add_argument(
       "--profile",

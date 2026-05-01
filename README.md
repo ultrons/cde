@@ -32,14 +32,28 @@ recipe-sharing across users (cdk fits).
 
 ## Status
 
-Active development. **Phase 0–3 shipped**: init, build, run, logs,
-shell, reap, history, annotate, hypothesize, tag, untag, compare,
-lineage, defaults, profile. **80 tests passing.**
+Active development. **Phase 0–4 shipped**: init, build, run, logs,
+shell, reap, watch, sync, server (up/down/wait-ready), history,
+annotate, hypothesize, tag, untag, compare, lineage, defaults, profile,
+plus shell tab completion. **93 tests passing.**
 
-Not yet shipped (next): `cde sync` (kubectl-cp file watcher),
-`cde watch` (opt-in source-watcher), `cde server` (inference-server
-lifecycle), full `cde profile pull/open` viewer integration. See
-[`PLAN.md`](PLAN.md) for phasing and rationale.
+Not yet shipped: `cde profile pull/open` viewer integration, GCS
+write-through for multi-machine history, metric extraction from runs.
+See [`PLAN.md`](PLAN.md) for phasing and rationale.
+
+### Tab completion (one-time setup)
+
+```bash
+# Bash / zsh:
+eval "$(register-python-argcomplete cde)"
+# Persist:
+echo 'eval "$(register-python-argcomplete cde)"' >> ~/.bashrc
+```
+
+After that, `cde annotate v<TAB>` expands run IDs from history,
+`cde history --tag <TAB>` lists tags you've used, `cde run --value-class
+<TAB>` suggests recent classes, `cde compare <TAB> <TAB>` works on both
+positionals.
 
 ## Install
 

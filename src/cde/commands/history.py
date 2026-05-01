@@ -23,14 +23,20 @@ from cde import config, db, logging as log, paths, suggest
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:
+  # Late imports to avoid an import cycle through cli.py.
+  from cde import cli, completers
+
   p = subparsers.add_parser(
       "history",
       help="List runs (or show one full row) from the local SQLite history.",
   )
-  p.add_argument(
-      "run_id",
-      nargs="?",
-      help="optional: print this run's full row as JSON",
+  cli.set_completer(
+      p.add_argument(
+          "run_id",
+          nargs="?",
+          help="optional: print this run's full row as JSON",
+      ),
+      completers.run_id_any_project_completer,
   )
   p.add_argument(
       "--limit", "-n", type=int, default=None,
@@ -43,14 +49,21 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       "--all", action="store_true",
       help="ignore the per-project filter; show runs across all projects",
   )
-  p.add_argument(
-      "--project", default=None,
-      help="filter by a specific project (overrides the current cde.yaml)",
+  cli.set_completer(
+      p.add_argument(
+          "--project", default=None,
+          help="filter by a specific project (overrides the current cde.yaml)",
+      ),
+      completers.project_completer,
   )
-  p.add_argument("--tag", default=None, help="filter by tag (string match)")
+  cli.set_completer(
+      p.add_argument("--tag", default=None, help="filter by tag (string match)"),
+      completers.tag_completer,
+  )
   p.add_argument(
       "--status", default=None,
-      help="filter by status (submitted | running | ok | failed | evicted)",
+      choices=["submitted", "running", "ok", "failed", "evicted"],
+      help="filter by status",
   )
   p.add_argument(
       "--since", default=None, metavar="DURATION",

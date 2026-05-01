@@ -65,6 +65,21 @@ class Defaults:
 
 
 @dataclass
+class ServerConfig:
+  """Optional inference-server lifecycle config.
+
+  When present, `cde server up` renders `template` (a JobSet that stays
+  up serving traffic) instead of cfg.template. `health_url` is the
+  in-pod URL polled by `cde server wait-ready` through a kubectl
+  port-forward.
+  """
+
+  template: str                    # path to server JobSet template
+  health_url: str = "http://localhost:8000/health"
+  port: int = 8000
+
+
+@dataclass
 class CdeConfig:
   """The parsed shape of cde.yaml.
 
@@ -81,6 +96,7 @@ class CdeConfig:
   sync: list[SyncMapping] = field(default_factory=list)
   profile: ProfileConfig | None = None
   history: HistoryConfig = field(default_factory=HistoryConfig)
+  server: ServerConfig | None = None
   defaults_overrides: dict[str, Any] = field(default_factory=dict)
 
 
@@ -192,6 +208,18 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
       gcs_uri=hist_raw.get("gcs_uri"),
   )
 
+  # server (optional)
+  server_raw = raw.get("server")
+  server: ServerConfig | None = None
+  if server_raw is not None:
+    if not isinstance(server_raw, dict):
+      raise ConfigError(f"{source}: `server` must be a mapping")
+    server = ServerConfig(
+        template=_require(server_raw, "template", source + ":server"),
+        health_url=server_raw.get("health-url", "http://localhost:8000/health"),
+        port=int(server_raw.get("port", 8000)),
+    )
+
   # defaults_overrides — free-form dict
   overrides = raw.get("defaults_overrides") or {}
   if not isinstance(overrides, dict):
@@ -206,5 +234,6 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
       sync=sync,
       profile=profile,
       history=history,
+      server=server,
       defaults_overrides=overrides,
   )
