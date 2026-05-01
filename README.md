@@ -210,6 +210,22 @@ cde history --status running            # see what's still active
 cde history --tag best-so-far           # see your wins
 ```
 
+## Examples
+
+Working examples — recorded iteration logs you can read top-to-bottom —
+live in [`examples/`](./examples/):
+
+| Directory | Status | Demonstrates |
+|---|---|---|
+| [`maxtext-llama2-7b/`](./examples/maxtext-llama2-7b/) | runnable | training-style sweep with `--inherit`, `cde compare`, `cde lineage`; MaxText `key=value` calling convention |
+| [`vllm/`](./examples/vllm/) | stub | inference: multi-container pod with `cde logs -c vllm-server` / `-c sidecar-bench` |
+| [`kernel-benchmark/`](./examples/kernel-benchmark/) | stub | non-training workload: profile-heavy, no `--inherit` chains |
+
+Examples are **recorded iteration logs, not ready-to-run demos** —
+swap `image.registry`, `team`, GCS URIs, and TPU topology for your own
+cluster. The cde side is gated by `tests/test_examples.py`, which runs
+`cde run --render-only` against every example to catch schema drift.
+
 ## For coding agents
 
 This section is for AI coding agents picking up an in-progress project —

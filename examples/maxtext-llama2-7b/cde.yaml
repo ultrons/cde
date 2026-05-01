@@ -1,0 +1,52 @@
+# Example: MaxText llama2-7b on a single TPU slice.
+#
+# This is a recorded iteration log. To run it on your cluster:
+#   1. Set image.registry to your own GCR / AR path.
+#   2. Set team to your team key from the cluster's team-quota ConfigMap.
+#   3. Set defaults_overrides.base_output_directory and dataset_path to
+#      buckets you have write access to.
+#   4. Match defaults.tpu-type and the template's nodeSelector to your
+#      cluster's TPU SKU and topology.
+
+project: maxtext-llama2-7b
+
+image:
+  registry: gcr.io/REPLACE-ME
+  name: maxtext
+  dockerfile: ./Dockerfile
+  context: .
+
+template: ./manifests/jobset.yaml.j2
+
+team: REPLACE-ME
+
+defaults:
+  value-class: development
+  declared-duration-minutes: 60
+  tpu-type: tpu7x
+  num-slices: 1
+
+# MaxText invocation knobs. These are the ones you'll iterate on per-run
+# via `cde run --set key=value`. They render into MaxText's `key=value`
+# CLI form via the args loop in the template — see manifests/jobset.yaml.j2.
+defaults_overrides:
+  config: MaxText/configs/base.yml
+  model_name: llama2-7b
+  base_output_directory: gs://REPLACE-ME/maxtext-output
+  dataset_path: gs://REPLACE-ME/dataset
+  per_device_batch_size: 4
+  steps: 100
+  remat_policy: full
+  enable_checkpointing: false
+  # XLA / JAX compilation cache. Stable per-config prefix avoids the cold
+  # compile that swings perf 5–10% on the same image+args. Override per-run
+  # only when you intentionally want to recompile.
+  jax_compilation_cache_dir: gs://REPLACE-ME/jax-cc/maxtext-llama2-7b-4x4x4
+
+# Auto-wired profiles: `cde run --profile` lands traces under here keyed by
+# run_id. Drop the comment when you have a bucket; cde will inject
+# JAX_PROFILER_DIR=<base-uri>/<run_id>/ into the pod.
+# profile:
+#   base-uri: gs://REPLACE-ME/cde-profiles
+
+history: {}

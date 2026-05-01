@@ -1,0 +1,76 @@
+{# MaxText llama2-7b — single TPU slice, 4x4x4 v7x topology.
+
+   Substitutions provided by `cde run`:
+     run_id, image, team, value_class, declared_minutes,
+     namespace, priority_class, num_slices,
+     overrides (dict of effective --set values),
+     env (list of {name, value} dicts cde injected, e.g. JAX_PROFILER_DIR
+          when --profile was used).
+
+   MaxText's CLI takes `key=value` (no leading `--`), and accepts boolean
+   values literally as `key=true` / `key=false`. The args loop below
+   differs from the default scaffolded template in two ways:
+
+     1. No leading `--` on each arg.
+     2. Python `True` / `False` from --flag/--no-flag render as
+        `key=true` / `key=false` instead of bare `--flag` / omitted —
+        because MaxText needs the literal value, not a bare flag.
+#}
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: {{ run_id }}
+  namespace: {{ namespace }}
+  labels:
+    kueue.x-k8s.io/queue-name: lq
+    team: {{ team }}
+    value-class: {{ value_class }}
+    declared-duration-minutes: "{{ declared_minutes }}"
+    cde.io/run-id: {{ run_id }}
+spec:
+  failurePolicy:
+    maxRestarts: 0
+  replicatedJobs:
+  - name: slice
+    replicas: {{ num_slices }}
+    template:
+      spec:
+        parallelism: 4
+        completions: 4
+        backoffLimit: 0
+        template:
+          metadata:
+            labels:
+              # Kueue propagates pod-template labels onto the Workload object;
+              # declared-duration-minutes MUST appear here for the time-limit
+              # controller to read it.
+              declared-duration-minutes: "{{ declared_minutes }}"
+              cde.io/run-id: {{ run_id }}
+          spec:
+            priorityClassName: {{ priority_class }}
+            restartPolicy: Never
+            nodeSelector:
+              cloud.google.com/gke-tpu-accelerator: tpu7x
+              cloud.google.com/gke-tpu-topology: "4x4x4"
+            containers:
+            - name: main
+              image: {{ image }}
+              imagePullPolicy: Always
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  cd /workspace && python MaxText/train.py {% for k, v in overrides.items() -%}
+                  {%- if v is sameas true %}{{ k }}=true {% elif v is sameas false %}{{ k }}=false {% else %}{{ k }}={{ v }} {% endif %}
+                  {%- endfor %}
+              env:
+              - name: CDE_RUN_ID
+                value: "{{ run_id }}"
+              - name: TPU_NAME
+                value: "tpu"
+              {%- for e in env %}
+              - name: {{ e.name }}
+                value: "{{ e.value }}"
+              {%- endfor %}
+              resources:
+                limits:
+                  google.com/tpu: "4"
