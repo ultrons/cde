@@ -132,20 +132,45 @@ agent-driven sessions.
 
 ## Step 8 — reading the iteration log later
 
-This is the payoff. After a few runs:
+This is the payoff. Real `cde history` output from the first MaxText
+smoke run on bodaborg-super-rbq (a development-shaped iteration that
+brought up the path end-to-end across 8 attempts, each surfacing a
+distinct cde or workload bug):
 
 ```bash
-cde history --tag bs-sweep
-# RUN_ID        STATUS  TEAM     VALUE-CLASS   OVERRIDES                                  AGE     TAGS      NOTES
-# bs8-002       ok      maxtext  development   per_device_batch_size=8                    2h ago  bs-sweep  BS=8 fit; throughput +1.7x...
-# baseline-001  ok      maxtext  development   per_device_batch_size=4                    4h ago  bs-sweep  fresh start; per_device...
+cde history --tag maxtext-smoke
+# RUN         STATUS   TEAM  VC           OVERRIDES                       AGE   TAGS                          NOTE
+# smoke-008b  ok       dev   development  config=src/maxtext/configs/...  14m   first-success,maxtext-smoke   First successful MaxText smoke...
+# smoke-008   failed   dev   development  config=src/maxtext/configs/...  16m                                 wrong context (silently switched)
+# smoke-007   failed   dev   development  config=src/maxtext/configs/...  1h                                  AssertionError: 128 devices vs ICI=64
+# smoke-006   evicted  dev   development  config=src/maxtext/configs/...  2h                                  ImagePullBackOff (cde.yaml edit churned hash)
+# smoke-005   evicted  dev   development  config=src/maxtext/configs/...  2h                                  time-limit-controller deactivated at 22.5min
+# smoke-004   evicted  dev   development  config=src/maxtext/configs/...  3h                                  IndivisibleError: fsdp=128 vs dim=32
+# smoke-003   evicted  dev   development  config=src/maxtext/configs/...  3h                                  ImagePullBackOff (template edit changed hash)
+# smoke-002   evicted  dev   development  config=src/maxtext/configs/...  3h                                  config=path arg-parser bug
+# smoke-001   failed   dev   development  config=src/maxtext/configs/...  3h                                  wrong kubectl context
 
-cde lineage bs8-002
-# bs8-002 → baseline-001
+cde lineage smoke-008b
+# smoke-008b → smoke-007 → smoke-006 → smoke-005 → smoke-004
+#            → smoke-003 → smoke-002 → smoke-001
 
-cde history bs8-002 --json | jq '.manifest_text' -r
-# (full rendered JobSet YAML, exactly what kubectl applied)
+cde history smoke-008b --json | jq '.notes' -r
+# First successful MaxText smoke on bodaborg-super-rbq.
+#
+#   step 0: 3.753s (compile-dominated), TFLOP/s/device: 0.062
+#   step 1: 0.351s, TFLOP/s/device: 0.661
+#   step 2: 0.509s, TFLOP/s/device: 0.455
+#   step 3: 0.350s, TFLOP/s/device: 0.662
+#   step 4: 0.007s (cache hit), TFLOP/s/device: 35.098
+#
+# Loss: 10.872 → 10.867 (decreasing as expected).
+# Mesh: 4x4x4 v7x slice (64 chips, 128 logical devices).
 ```
+
+The point is the rightmost "NOTE" column. Every `evicted`/`failed` row
+has a one-line root cause that future-you (or a future agent) can read
+in one tool call — no `kubectl describe` archaeology needed. **This is
+why the SQLite history is the canonical handoff artifact.**
 
 `cde history --json` is the canonical way for a future coding-agent session
 (Claude Code, Cursor, Codex, Aider, Gemini Code Assist, Copilot Workspace)
