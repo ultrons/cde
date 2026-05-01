@@ -78,6 +78,14 @@ cde init --project my-bench
 #    or replace it with your own.
 $EDITOR cde.yaml manifests/jobset.yaml.j2
 
+# Already have a JobSet you've been hand-editing? Onboard it instead:
+#   cde init --from-yaml path/to/your/jobset.yaml --project my-bench
+# This parses the existing manifest, infers cde.yaml fields (team,
+# value-class, declared-min, namespace, priority class, image, num-slices,
+# tpu-type), and emits a Jinja template with cde-owned bits substituted
+# ({{ run_id }}, {{ image }}, {{ namespace }}, …) — your custom env vars,
+# kueue annotations, and resource limits are preserved verbatim.
+
 # 3. Build the image (hash-tagged from build context)
 cde build
 
@@ -143,7 +151,7 @@ more explicit shape.
 
 | Verb | What it does | Most-useful flags |
 |---|---|---|
-| `cde init` | Scaffold cde.yaml + manifest template + history DB | `--project`, `--force`, `--no-history` |
+| `cde init` | Scaffold cde.yaml + manifest template + history DB | `--project`, `--force`, `--no-history`, `--from-yaml <path>` |
 | `cde build` | Docker build + push, hash-tagged | `--show-tag` (alias `--print-tag`), `--no-push`, `--force` |
 | `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--value-class`, `--declared-minutes`, `--num-slices` |
 | `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pick replica), `-c NAME` (pick container), `--no-follow`, `--since 5m` |

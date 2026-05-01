@@ -9,13 +9,21 @@ cde.yaml is closer to ready-to-edit than ready-to-replace:
 
   REPLACE-ME (project key)  → --project arg or basename of cwd
   REPLACE-ME (image.name)   → basename of cwd (good first guess)
+
+`--from-yaml <path>` parses an existing JobSet manifest and emits a
+matching cde.yaml + Jinja template, so onboarding a workload that
+already has a hand-written YAML doesn't require rewriting.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.resources as ilr
+import re
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from cde import db, logging as log, paths
 
@@ -43,6 +51,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       action="store_true",
       help="Skip bootstrapping the SQLite history DB.",
   )
+  p.add_argument(
+      "--from-yaml",
+      dest="from_yaml",
+      default=None,
+      metavar="PATH",
+      help=(
+          "Scaffold cde.yaml + jinja template from an existing JobSet"
+          " manifest at PATH instead of from the packaged defaults."
+      ),
+  )
   p.set_defaults(func=run)
 
 
@@ -56,6 +74,216 @@ def _scaffold_cde_yaml(project_name: str) -> str:
   text = text.replace("project: REPLACE-ME", f"project: {project_name}", 1)
   text = text.replace("name: REPLACE-ME", f"name: {project_name}", 1)
   return text
+
+
+# ---------------------------------------------------------------------------
+# --from-yaml: import an existing JobSet
+# ---------------------------------------------------------------------------
+
+
+# Keys whose value-position Jinja placeholder is safe to emit unquoted.
+# (The post-pass below strips the quotes pyyaml adds around `'{{ x }}'`.)
+# `declared-duration-minutes` is intentionally NOT in this set: K8s label
+# values must be strings, so the rendered output needs `"60"`, not `60`.
+_UNQUOTE_KEYS = {
+    "name", "namespace", "team", "value-class",
+    "priorityClassName", "image", "replicas",
+    "parallelism", "completions",
+}
+
+
+def _split_image(image: str | None) -> tuple[str, str, str | None]:
+  """`gcr.io/proj/myname:tag` → ('gcr.io/proj', 'myname', 'tag').
+  Falls back to ('REPLACE-ME', <best guess>, None) on any unparseable form."""
+  if not image:
+    return "REPLACE-ME", "REPLACE-ME", None
+  base, _, tag = image.rpartition(":")
+  if not base:
+    base, tag = image, None
+  if "/" in base:
+    registry, _, name = base.rpartition("/")
+  else:
+    registry, name = "REPLACE-ME", base
+  return registry or "REPLACE-ME", name or "REPLACE-ME", tag or None
+
+
+def _from_yaml_scaffold(
+    yaml_path: Path, project_name: str
+) -> tuple[str, str, dict[str, Any]]:
+  """Parse a JobSet YAML; return (cde_yaml_text, jinja_template_text, info).
+
+  `info` is a dict of inferred fields (used only to log what we found).
+  Raises ValueError on an unusable input."""
+  raw = yaml_path.read_text(encoding="utf-8")
+  docs = [d for d in yaml.safe_load_all(raw) if d is not None]
+  jobsets = [d for d in docs if isinstance(d, dict) and d.get("kind") == "JobSet"]
+  if not jobsets:
+    raise ValueError(
+        f"no JobSet document found in {yaml_path} "
+        f"(saw kinds: {sorted({d.get('kind') for d in docs})})"
+    )
+  if len(jobsets) > 1:
+    raise ValueError(
+        f"{yaml_path} contains {len(jobsets)} JobSet documents; "
+        "pass one at a time"
+    )
+  js = jobsets[0]
+  other_docs = [d for d in docs if d is not js]
+
+  md = js.setdefault("metadata", {})
+  labels = md.setdefault("labels", {})
+  spec = js.setdefault("spec", {})
+  rjs = spec.setdefault("replicatedJobs", [])
+  rj = rjs[0] if rjs else {}
+  pod_template = (
+      (rj.get("template") or {}).get("spec", {}).get("template", {})
+  )
+  pod_metadata = pod_template.setdefault("metadata", {}) if pod_template else {}
+  pod_labels = pod_metadata.setdefault("labels", {}) if pod_template else {}
+  pod_spec = pod_template.setdefault("spec", {}) if pod_template else {}
+  containers = pod_spec.get("containers", []) if pod_template else []
+  main = containers[0] if containers else {}
+
+  inferred = {
+      "team": labels.get("team"),
+      "value_class": labels.get("value-class"),
+      "declared_minutes": labels.get("declared-duration-minutes"),
+      "namespace": md.get("namespace"),
+      "priority_class": pod_spec.get("priorityClassName") if pod_template else None,
+      "image": main.get("image"),
+      "num_slices": rj.get("replicas"),
+      "tpu_type": (
+          (pod_spec.get("nodeSelector") or {}).get(
+              "cloud.google.com/gke-tpu-accelerator"
+          ) if pod_template else None
+      ),
+      "tpu_topology": (
+          (pod_spec.get("nodeSelector") or {}).get(
+              "cloud.google.com/gke-tpu-topology"
+          ) if pod_template else None
+      ),
+  }
+
+  registry, image_name, _ = _split_image(inferred["image"])
+
+  # Substitute Jinja placeholders into the parsed structure.
+  md["name"] = "{{ run_id }}"
+  md["namespace"] = "{{ namespace }}"
+  labels["team"] = "{{ team }}"
+  if "value-class" in labels:
+    labels["value-class"] = "{{ value_class }}"
+  if "declared-duration-minutes" in labels:
+    labels["declared-duration-minutes"] = "{{ declared_minutes }}"
+  labels["cde.io/run-id"] = "{{ run_id }}"
+
+  if pod_template:
+    pod_labels.setdefault("cde.io/run-id", "{{ run_id }}")
+    if "declared-duration-minutes" in pod_labels:
+      pod_labels["declared-duration-minutes"] = "{{ declared_minutes }}"
+    if "priorityClassName" in pod_spec:
+      pod_spec["priorityClassName"] = "{{ priority_class }}"
+    if main:
+      main["image"] = "{{ image }}"
+
+  if rj:
+    rj["replicas"] = "{{ num_slices }}"
+
+  # Dump and post-process. Use a default_flow_style=False block dump.
+  dumped = yaml.safe_dump(js, default_flow_style=False, sort_keys=False)
+
+  # Unquote `'{{ x }}'` for keys where unquoting is safe.
+  def _unquote(text: str, key: str) -> str:
+    pattern = (
+        rf"^(?P<indent>\s*){re.escape(key)}:(?P<sp>\s+)"
+        r"(?P<q>['\"])(?P<jinja>\{\{\s*\w+\s*\}\})(?P=q)(?P<tail>\s*)$"
+    )
+    return re.sub(
+        pattern, r"\g<indent>" + key + r":\g<sp>\g<jinja>\g<tail>",
+        text, flags=re.MULTILINE,
+    )
+
+  for k in _UNQUOTE_KEYS:
+    dumped = _unquote(dumped, k)
+
+  # If the input had sibling docs (PriorityClass etc.), keep them as-is —
+  # cde owns only the JobSet. Emit them after the JobSet, separated by ---.
+  if other_docs:
+    extras = "\n---\n".join(
+        yaml.safe_dump(d, default_flow_style=False, sort_keys=False)
+        for d in other_docs
+    )
+    dumped = dumped + "---\n" + extras
+
+  template_text = (
+      "{# Scaffolded by `cde init --from-yaml`. Edit freely.\n"
+      "   Substitutions provided by `cde run`:\n"
+      "     run_id, image, team, value_class, declared_minutes,\n"
+      "     namespace, priority_class, num_slices,\n"
+      "     overrides (dict), env (list of {name, value} dicts).\n"
+      "   Bool overrides (--flag/--no-flag) come through as Python True/False;\n"
+      "   render True as a bare --flag, False as omitted.\n"
+      "#}\n"
+  ) + dumped
+
+  # Build cde.yaml using inferred values where we found them.
+  pkg_templates = ilr.files("cde").joinpath("templates")
+  base = pkg_templates.joinpath("cde.yaml").read_text(encoding="utf-8")
+  base = base.replace("project: REPLACE-ME", f"project: {project_name}", 1)
+  base = base.replace(
+      "registry: gcr.io/REPLACE-ME", f"registry: {registry}", 1,
+  )
+  base = base.replace("name: REPLACE-ME", f"name: {image_name}", 1)
+  if inferred["team"]:
+    base = base.replace("team: REPLACE-ME", f"team: {inferred['team']}", 1)
+  if inferred["value_class"]:
+    base = base.replace(
+        "value-class: development",
+        f"value-class: {inferred['value_class']}", 1,
+    )
+  if inferred["declared_minutes"] is not None:
+    try:
+      dm = int(inferred["declared_minutes"])
+      base = base.replace(
+          "declared-duration-minutes: 60",
+          f"declared-duration-minutes: {dm}", 1,
+      )
+    except (TypeError, ValueError):
+      pass
+  if inferred["tpu_type"]:
+    base = base.replace(
+        "tpu-type: tpu7x-128", f"tpu-type: {inferred['tpu_type']}", 1,
+    )
+  if inferred["num_slices"] is not None:
+    try:
+      ns = int(inferred["num_slices"])
+      base = base.replace("num-slices: 1", f"num-slices: {ns}", 1)
+    except (TypeError, ValueError):
+      pass
+
+  # If the imported YAML used a non-derived namespace / priorityClass,
+  # pin them in defaults_overrides so cde doesn't override them via
+  # the team-<team> fallback.
+  ns_override = inferred["namespace"]
+  pc_override = inferred["priority_class"]
+  team = inferred["team"] or ""
+  derives_to_team_ns = ns_override == f"team-{team}" if team else False
+  derives_to_team_pc = (
+      pc_override == f"{ns_override}-priority"
+      if ns_override and pc_override else False
+  )
+  override_lines: list[str] = []
+  if ns_override and not derives_to_team_ns:
+    override_lines.append(f"  namespace: {ns_override}")
+  if pc_override and not derives_to_team_pc:
+    override_lines.append(f"  priority_class: {pc_override}")
+  if override_lines:
+    base = base.replace(
+        "defaults_overrides: {}",
+        "defaults_overrides:\n" + "\n".join(override_lines),
+        1,
+    )
+
+  return base, template_text, inferred
 
 
 def run(args: argparse.Namespace) -> int:
@@ -75,13 +303,38 @@ def run(args: argparse.Namespace) -> int:
 
   pkg_templates = ilr.files("cde").joinpath("templates")
 
+  imported_info: dict[str, Any] | None = None
+  if args.from_yaml:
+    src = Path(args.from_yaml).expanduser().resolve()
+    if not src.is_file():
+      log.err("--from-yaml: %s does not exist or is not a file", src)
+      return 1
+    try:
+      cde_yaml_text, template_text, imported_info = _from_yaml_scaffold(
+          src, project_name,
+      )
+    except (ValueError, yaml.YAMLError) as exc:
+      log.err("--from-yaml: %s", exc)
+      return 1
+  else:
+    cde_yaml_text = _scaffold_cde_yaml(project_name)
+    template_text = pkg_templates.joinpath("jobset.yaml.j2").read_text(
+        encoding="utf-8",
+    )
+
   log.step("writing %s", cde_yaml_dst.relative_to(cwd))
-  cde_yaml_dst.write_text(_scaffold_cde_yaml(project_name), encoding="utf-8")
+  cde_yaml_dst.write_text(cde_yaml_text, encoding="utf-8")
   log.detail(
       "project name set to %r (basename of %s)",
       project_name, cwd,
   )
   log.detail("edit cde.yaml.project if you want a different grouping for history")
+
+  if imported_info is not None:
+    found = ", ".join(
+        f"{k}={v}" for k, v in sorted(imported_info.items()) if v is not None
+    ) or "(nothing inferable)"
+    log.detail("imported from %s: %s", args.from_yaml, found)
 
   manifests_dir.mkdir(exist_ok=True)
   if manifest_dst.exists() and not args.force:
@@ -91,10 +344,7 @@ def run(args: argparse.Namespace) -> int:
     )
   else:
     log.step("writing %s", manifest_dst.relative_to(cwd))
-    manifest_dst.write_text(
-        pkg_templates.joinpath("jobset.yaml.j2").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
+    manifest_dst.write_text(template_text, encoding="utf-8")
 
   if not args.no_history:
     log.step("initialising history DB at %s", paths.history_db_path())
