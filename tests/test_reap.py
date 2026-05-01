@@ -46,7 +46,7 @@ def test_reap_updates_terminal_runs(env, monkeypatch):
       "js-v003": None,                              # never queried
   }
 
-  def fake_get(namespace, name):
+  def fake_get(namespace, name, *, context=None):
     return responses[name]
 
   monkeypatch.setattr(reap_cmd.k8s, "get_jobset_status", fake_get)
@@ -82,7 +82,7 @@ def test_reap_unknown_jobset_marks_evicted(env, monkeypatch):
              jobset_name="js-gone", status="running"),
   )
 
-  def fake_get(namespace, name):
+  def fake_get(namespace, name, *, context=None):
     return k8s.JobSetStatus(
         status="unknown", reason="not-found", message="gone", raw_phase=None,
     )
@@ -108,7 +108,7 @@ def test_reap_skips_runs_without_namespace(env, monkeypatch):
 
   called = []
 
-  def fake_get(namespace, name):
+  def fake_get(namespace, name, *, context=None):
     called.append(name)
     return k8s.JobSetStatus("ok", None, None, None)
 

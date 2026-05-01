@@ -87,7 +87,9 @@ def run(args: argparse.Namespace) -> int:
       continue
     name = r.jobset_name or r.run_id
     try:
-      js = k8s.get_jobset_status(r.k8s_namespace, name)
+      js = k8s.get_jobset_status(
+          r.k8s_namespace, name, context=r.k8s_context or None,
+      )
     except k8s.KubectlError as exc:
       log.warn("%s: status check failed: %s", r.run_id, exc)
       continue

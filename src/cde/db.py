@@ -72,6 +72,14 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE runs ADD COLUMN project TEXT NOT NULL DEFAULT '';
     CREATE INDEX idx_runs_project ON runs(project);
     """,
+
+    # 003_k8s_context.sql — record the kubectl context the apply targeted,
+    # so logs/reap/shell route to the right cluster regardless of the
+    # current shell's kubectl context. Empty default for pre-existing rows
+    # (those fall back to current-context behavior).
+    """
+    ALTER TABLE runs ADD COLUMN k8s_context TEXT NOT NULL DEFAULT '';
+    """,
 ]
 
 
@@ -150,6 +158,7 @@ class Run:
   value_class: str | None = None
   declared_min: int | None = None
   k8s_namespace: str | None = None
+  k8s_context: str = ""            # context the apply targeted; "" for legacy rows
   jobset_name: str | None = None
 
   log_uri: str | None = None

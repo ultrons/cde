@@ -133,6 +133,17 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       ),
   )
   p.add_argument(
+      "--context",
+      dest="kubectl_context",
+      default=None,
+      help=(
+          "kubectl context to apply to. Default: kubectl config"
+          " current-context (snapshotted at submit time and recorded on"
+          " the run row, so cde logs/reap/shell route to the right"
+          " cluster regardless of later context drift)."
+      ),
+  )
+  p.add_argument(
       "--render-only",
       action="store_true",
       help="render the manifest to stdout and exit (no apply, no record)",
@@ -327,6 +338,23 @@ def run(args: argparse.Namespace) -> int:
   if gi.dirty:
     log.warn("running with uncommitted changes (git_dirty=true)")
 
+  # Resolve kubectl context up front so it can be recorded in the run row
+  # below before the apply step runs (was a use-before-assign at 357).
+  if args.kubectl_context:
+    ctx = args.kubectl_context
+  else:
+    ctx = k8s.current_context()
+    if ctx is None:
+      log.err(
+          "no kubectl context available — pass --context, or set one with"
+          " `kubectl config use-context <name>`."
+      )
+      return 1
+    log.info(
+        "no --context given; using current default %s — pass --context to override",
+        ctx,
+    )
+
   # Record the row BEFORE apply — even a failed apply is data.
   run_row = db.Run(
       run_id=args.tag,
@@ -343,6 +371,7 @@ def run(args: argparse.Namespace) -> int:
       value_class=value_class,
       declared_min=declared_min,
       k8s_namespace=namespace,
+      k8s_context=ctx or "",
       jobset_name=args.tag,
       profile_uri=profile_uri,
       notes=args.note,
@@ -356,16 +385,15 @@ def run(args: argparse.Namespace) -> int:
       return 1
     db.insert_run(conn, run_row)
 
-  ctx = k8s.current_context()
   log.step(
       "applying to context=%s namespace=%s priorityClass=%s%s",
-      ctx or "(unset — kubectl will fail)",
+      ctx,
       namespace,
       priority_class,
       " (dry-run)" if args.dry_run else "",
   )
   try:
-    out = k8s.apply(manifest, dry_run=args.dry_run)
+    out = k8s.apply(manifest, dry_run=args.dry_run, context=ctx)
   except k8s.KubectlError as exc:
     with db.open_db(_resolve_history_path(cfg)) as conn:
       db.set_status(conn, args.tag, "failed", finished=True)

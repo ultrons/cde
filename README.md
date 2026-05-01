@@ -155,8 +155,9 @@ more explicit shape.
 |---|---|---|
 | `cde init` | Scaffold cde.yaml + manifest template + history DB | `--project`, `--force`, `--no-history`, `--from-yaml <path>` |
 | `cde build` | Docker build + push, hash-tagged | `--show-tag` (alias `--print-tag`), `--no-push`, `--force` |
-| `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--value-class`, `--declared-minutes`, `--num-slices` |
+| `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--context`, `--value-class`, `--declared-minutes`, `--num-slices` |
 | `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pick replica), `-c NAME` (pick container), `--no-follow`, `--since 5m` |
+| `cde status <run>` | Live cluster view of a run | Shows Kueue admission state, JobSet phase, pod-level rollup, recent events. Routes via the recorded kubectl context for the run. `--json` for agents. |
 | `cde shell` | k9s scoped to project namespace | `--exec <run>` for kubectl exec |
 | `cde reap` | Refresh status for in-flight runs | `--all` (cross-project), `--limit` |
 | `cde history` | Table of recent runs in this project | `--json`, `--tag`, `--status`, `--since 7d`, `--all`, `--project`, `--limit`; positional `<run_id>` for one row |
@@ -167,6 +168,30 @@ more explicit shape.
 | `cde lineage <id>` | Walk parent_run chain backwards | — |
 | `cde defaults` | Show or reset sticky defaults | `--show`, `--reset`, `--reset-all` |
 | `cde profile path <id>` | Print profile_uri (for `gsutil ls $(...)`) | — |
+
+### Kubectl context handling
+
+`cde run` snapshots the kubectl context **once at submit time** (or
+takes it from `--context` if you pass one), prints it, passes
+`--context=<that>` to every kubectl invocation in that command, and
+**records it on the run row**. The other verbs (`logs`, `reap`,
+`shell --exec`, `status`) use the recorded context per run rather
+than reading `kubectl config current-context` themselves.
+
+Why: `kubectl` is global state — the active context can drift between
+shells/sessions. Earlier versions of cde inherited that drift. Now the
+context the user *sees printed at submit* is the context the apply
+*actually targets*, and follow-up commands route to the cluster the
+run actually went to. If you didn't pass `--context`, cde prints an
+INFO line:
+
+```
+ℹ no --context given; using current default gke_..._bodaborg-super-rbq — pass --context to override
+```
+
+Legacy run rows (recorded before this change) have no context and fall
+back to current-context behavior. `cde reap` and `cde status` will note
+this in their output.
 
 ## Common workflows
 

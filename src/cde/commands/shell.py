@@ -113,6 +113,7 @@ def _exec_into_run(args: argparse.Namespace) -> int:
   try:
     return k8s.exec_into_first_pod(
         namespace=r.k8s_namespace, label=label, command=cmd,
+        context=r.k8s_context or None,
     )
   except k8s.KubectlError as exc:
     log.err("%s", exc)

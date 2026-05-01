@@ -90,6 +90,7 @@ def run(args: argparse.Namespace) -> int:
     return 1
 
   label = f"cde.io/run-id={r.run_id}"
+  ctx = r.k8s_context or None  # legacy rows have "" → fall through to current
 
   if args.all_pods and args.replica is not None:
     log.err("cannot combine -a/--all-pods with -r/--replica")
@@ -107,10 +108,11 @@ def run(args: argparse.Namespace) -> int:
         follow=args.follow,
         since=args.since,
         container=args.container,
+        context=ctx,
     )
   else:
     try:
-      pods = k8s.list_pods(r.k8s_namespace, label)
+      pods = k8s.list_pods(r.k8s_namespace, label, context=ctx)
     except k8s.KubectlError as exc:
       log.err("%s", exc)
       return 1
@@ -138,6 +140,7 @@ def run(args: argparse.Namespace) -> int:
         follow=args.follow,
         since=args.since,
         container=args.container,
+        context=ctx,
     )
 
   if not args.follow:
@@ -152,7 +155,7 @@ def run(args: argparse.Namespace) -> int:
   # After --follow exits, refresh status from JobSet.
   log.step("refreshing run status from JobSet")
   try:
-    js = k8s.get_jobset_status(r.k8s_namespace, r.jobset_name or r.run_id)
+    js = k8s.get_jobset_status(r.k8s_namespace, r.jobset_name or r.run_id, context=ctx)
   except k8s.KubectlError as exc:
     log.warn("status refresh skipped: %s", exc)
     return rc

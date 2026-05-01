@@ -27,6 +27,7 @@ _COMMANDS = [
     "build",
     "run",
     "logs",
+    "status",
     "shell",
     "reap",
     "watch",
