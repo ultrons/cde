@@ -48,10 +48,11 @@ Two specific pain points the existing tools don't solve:
    scattered in scratch markdown files that get lost. With structured
    run history + notes + tags, this becomes one command.
 
-The Claude-collab angle: when run history is in SQLite, Claude can read
-the whole iteration log in a single tool call and reason about what's
-been tried. That's a different tier of assistance than "ask the user to
-find the YAML files."
+The coding-agent collab angle: when run history is in SQLite, any agent
+(Claude Code, Cursor, Codex, Aider, Gemini Code Assist, Copilot
+Workspace, …) can read the whole iteration log in a single tool call
+and reason about what's been tried. That's a different tier of
+assistance than "ask the user to find the YAML files."
 
 ## Iteration tiers (the unlock)
 
@@ -131,10 +132,12 @@ overriding user-level:
 | `<project>/cde.yaml` | Per-project | image, team, template, sync paths, project-specific defaults. The required field every project must set. |
 
 The `~/.cde/preferences.yaml` is the migration target for things that
-were previously human-prose instructions in `~/.claude/CLAUDE.md` (e.g.
+were previously human-prose instructions in agent rule files
+(`~/.claude/CLAUDE.md`, `.cursorrules`, `AGENTS.md`, `GEMINI.md`,
+`.aider.conf.yml`, etc. — every coding agent has its own format, e.g.
 "always use local docker build"). With cde owning the build pipeline,
 those preferences become machine-readable config that cde enforces,
-not free-form instructions Claude has to remember to follow.
+not free-form instructions an agent has to remember to follow.
 
 ## Data model
 
@@ -219,7 +222,7 @@ CREATE TABLE runs (
   profile_uri   TEXT,
   output_uri    TEXT,                         -- checkpoints / outputs
 
-  -- annotations (the part we and Claude care about most)
+  -- annotations (the part humans and coding agents care about most)
   notes         TEXT DEFAULT '',
   tags          TEXT DEFAULT '[]',            -- JSON array
   hypothesis    TEXT DEFAULT '',
@@ -247,7 +250,7 @@ cde run [--mode=…] [--set k=v] [--tag X] [--note "..."] [--profile]
                             # render + apply + record history
 cde history                 # last 20 runs, table view
 cde history <run_id>        # full row, JSON
-cde history --json          # all rows, JSON (for me/Claude)
+cde history --json          # all rows, JSON (for humans + coding agents)
 cde annotate <run> "..."    # update notes
 cde tag <run> <tag>         # add tag
 cde compare <a> <b>         # diff overrides + notes + (optional) manifest
@@ -285,7 +288,7 @@ cde eval <suite>            # eval clients separate from bench
    `commands/run.py` (subset: just restart-mode, no sync/build auto-detect).
    First usable end-to-end loop.
 3. **Phase 2:** `commands/history.py`, `commands/annotate.py`,
-   `commands/compare.py`. Now Claude can query.
+   `commands/compare.py`. Now coding agents can query.
 4. **Phase 3:** `k8s.py` improvements (JobSet wait-ready, log streaming),
    `commands/logs.py`, `commands/shell.py`.
 5. **Phase 4:** `commands/sync.py` (kubectl-cp watcher) + `commands/watch.py`.
@@ -331,9 +334,10 @@ delegating to skaffold. The reason this stays sustainable:
 | Hash-based image tags | Eliminates the "what tag did I push?" cognitive load + redundant rebuilds. | Multiple parallel writers to the same image registry. |
 | `~/.cde/history.sqlite` (XDG-ish) | One DB across all projects on a machine. Lets `cde history --all` show cross-project. | Per-project isolation becomes desired. Move to `<project>/.cde/history.sqlite`. |
 
-## Future-Claude orientation
+## Future-agent orientation
 
-If a future Claude session works on this repo:
+If a future coding-agent session (Claude Code, Cursor, Codex, Aider,
+Gemini Code Assist, Copilot Workspace, …) works on this repo:
 
 - **Read this file first.** It captures the design rationale that the
   code can't.

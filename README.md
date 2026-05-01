@@ -22,8 +22,10 @@ cde compare v001 v002               # what changed between two runs
 - You forget what you tried last week.
 - You want every job tagged + auto-routed to a Kueue team queue without
   hand-editing labels into every manifest.
-- You want a future Claude / coding-agent session to be able to see what
-  you've already tried by reading a structured DB rather than asking you.
+- You want a future coding-agent session (Claude Code, Cursor, Codex,
+  Aider, Gemini Code Assist, Copilot Workspace, …) to be able to see
+  what you've already tried by reading a structured DB rather than
+  asking you.
 
 **Not the right fit if:** you only run jobs occasionally, or you need a
 production submission tool with cluster lifecycle (use
@@ -125,8 +127,8 @@ notes, hypothesis, tags, parent_run, profile_uri, log_uri. Always
 written before kubectl-apply, so even failed submits leave a row.
 
 `cde history --json` dumps the table. `cde history <id>` shows one full
-row. **This is the canonical way for a future Claude session to learn
-what you've been trying.**
+row. **This is the canonical way for a future coding-agent session — or
+future-you — to learn what you've been trying.**
 
 ### 3. Sticky defaults (per project, allowlisted)
 
@@ -208,9 +210,16 @@ cde history --status running            # see what's still active
 cde history --tag best-so-far           # see your wins
 ```
 
-## For coding agents (Claude, etc.)
+## For coding agents
 
-If you're an agent picking up an in-progress project:
+This section is for AI coding agents picking up an in-progress project —
+Claude Code, Cursor, Codex, Aider, Gemini Code Assist, Copilot Workspace,
+or any other tool/agent driving the shell. The interface is the same
+regardless of which model is behind it: cde's design goal is that an
+agent who has never seen the project before can reconstruct intent from
+the SQLite history alone.
+
+If you're that agent:
 
 1. **Read `PLAN.md`** for design rationale that the code can't capture.
 2. **Read `PREFERENCES` (if present)** for project-specific conventions.
