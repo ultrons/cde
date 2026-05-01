@@ -20,3 +20,8 @@ venv/
 # cde-local state in dev sandboxes
 .cde/
 *.local.yaml
+
+# Internal feedback / iteration notes — not for the public repo
+FEEDBACK.md
+NOTES.md
+*.private.md

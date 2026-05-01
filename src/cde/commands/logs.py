@@ -1,10 +1,13 @@
 """`cde logs <run>` — tail the JobSet's pods, then sync status to history.
 
-Default streams logs (kubectl -f) and waits until the JobSet finishes
-(or the user Ctrl-C's out). After kubectl exits, polls JobSet status
-once and updates the history row's status + ts_finished.
+Default streams logs from pod 0 (oldest pod matching the run label), all
+containers, prefixed. Multi-pod runs (e.g. JobSet with N replicas) are
+legible by default — pass `-a` to fan out across every pod, or `-r N` to
+pick a specific replica.
 
-Use `--no-follow` for a one-shot read (no status update).
+After kubectl exits, polls JobSet status once and updates the history
+row's status + ts_finished. Use `--no-follow` for a one-shot read (no
+status update).
 """
 
 from __future__ import annotations
@@ -34,6 +37,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       "--since",
       default=None,
       help="kubectl --since= (e.g. 5m, 1h)",
+  )
+  p.add_argument(
+      "-a", "--all-pods",
+      dest="all_pods",
+      action="store_true",
+      help="stream logs from every pod (default: pod 0 only)",
+  )
+  p.add_argument(
+      "-r", "--replica",
+      dest="replica",
+      type=int,
+      default=None,
+      help="stream logs from pod index N (0-based, sorted by creation time)",
+  )
+  p.add_argument(
+      "-c", "--container",
+      dest="container",
+      default=None,
+      help="filter to a single container name (default: all containers, prefixed)",
   )
   p.set_defaults(func=run, follow=True)
 
@@ -68,18 +90,55 @@ def run(args: argparse.Namespace) -> int:
     return 1
 
   label = f"cde.io/run-id={r.run_id}"
-  log.step(
-      "tailing %s/%s (label %s)%s",
-      r.k8s_namespace, r.jobset_name or r.run_id, label,
-      "" if args.follow else " (no follow)",
-  )
 
-  rc = k8s.stream_logs(
-      namespace=r.k8s_namespace,
-      label=label,
-      follow=args.follow,
-      since=args.since,
-  )
+  if args.all_pods and args.replica is not None:
+    log.err("cannot combine -a/--all-pods with -r/--replica")
+    return 2
+
+  if args.all_pods:
+    log.step(
+        "tailing %s/%s across all pods (label %s)%s",
+        r.k8s_namespace, r.jobset_name or r.run_id, label,
+        "" if args.follow else " (no follow)",
+    )
+    rc = k8s.stream_logs(
+        namespace=r.k8s_namespace,
+        label=label,
+        follow=args.follow,
+        since=args.since,
+        container=args.container,
+    )
+  else:
+    try:
+      pods = k8s.list_pods(r.k8s_namespace, label)
+    except k8s.KubectlError as exc:
+      log.err("%s", exc)
+      return 1
+    if not pods:
+      log.err("no pods for run %s in %s (label %s)", r.run_id, r.k8s_namespace, label)
+      return 1
+    idx = args.replica if args.replica is not None else 0
+    if idx < 0 or idx >= len(pods):
+      log.err(
+          "replica %d out of range (run has %d pod%s: 0..%d)",
+          idx, len(pods), "" if len(pods) == 1 else "s", len(pods) - 1,
+      )
+      return 1
+    pod = pods[idx]
+    log.step(
+        "tailing %s/%s (replica %d/%d, %d total)%s",
+        r.k8s_namespace, pod, idx, len(pods) - 1, len(pods),
+        "" if args.follow else " (no follow)",
+    )
+    if len(pods) > 1 and not args.all_pods and args.replica is None:
+      log.detail("(pass -a to stream all pods, or -r N to pick another replica)")
+    rc = k8s.stream_pod_logs(
+        namespace=r.k8s_namespace,
+        pod=pod,
+        follow=args.follow,
+        since=args.since,
+        container=args.container,
+    )
 
   if not args.follow:
     return rc

@@ -127,11 +127,33 @@ def classify_jobset(obj: dict) -> JobSetStatus:
 # ---------------------------------------------------------------------------
 
 
+def list_pods(namespace: str, label: str) -> list[str]:
+  """Return pod names matching `label`, sorted by creation time (oldest first)."""
+  proc = subprocess.run(
+      [
+          "kubectl", "get", "pods",
+          "-n", namespace, "-l", label,
+          "--sort-by=.metadata.creationTimestamp",
+          "-o", "jsonpath={.items[*].metadata.name}",
+      ],
+      capture_output=True, text=True, check=False,
+  )
+  if proc.returncode != 0:
+    err = (proc.stderr or proc.stdout).strip()
+    raise KubectlError(f"kubectl get pods failed: {err}")
+  return [n for n in proc.stdout.strip().split() if n]
+
+
 def stream_logs(
-    *, namespace: str, label: str, follow: bool = True, since: str | None = None,
+    *,
+    namespace: str,
+    label: str,
+    follow: bool = True,
+    since: str | None = None,
+    container: str | None = None,
 ) -> int:
-  """Spawn `kubectl logs -l <label> --prefix=true [-f]` inheriting parent
-  stdio. Returns kubectl's exit code (130 on Ctrl-C)."""
+  """Stream kubectl logs across every pod matching `label`. Use this for the
+  `-a/--all-pods` mode of `cde logs`. Returns kubectl's exit code."""
   args = [
       "kubectl", "logs",
       "-n", namespace,
@@ -139,6 +161,36 @@ def stream_logs(
       "--prefix=true",
       "--max-log-requests=64",
   ]
+  if container:
+    args.extend(["-c", container])
+  else:
+    args.append("--all-containers=true")
+  if follow:
+    args.append("-f")
+  if since:
+    args.append(f"--since={since}")
+
+  log.detail("$ %s", " ".join(args))
+  try:
+    return subprocess.call(args)
+  except KeyboardInterrupt:
+    return 130
+
+
+def stream_pod_logs(
+    *,
+    namespace: str,
+    pod: str,
+    follow: bool = True,
+    since: str | None = None,
+    container: str | None = None,
+) -> int:
+  """Stream kubectl logs for a single pod. Default: all containers, prefixed."""
+  args = ["kubectl", "logs", "-n", namespace, pod]
+  if container:
+    args.extend(["-c", container])
+  else:
+    args.extend(["--all-containers=true", "--prefix=true"])
   if follow:
     args.append("-f")
   if since:
