@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cde"
+version = "0.0.1"
+description = "TPU/GPU iteration manager — build, submit, record, compare."
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml >= 6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest >= 7.0",
+]
+
+[project.scripts]
+cde = "cde.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cde = ["templates/*"]

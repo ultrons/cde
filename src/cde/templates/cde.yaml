@@ -1,0 +1,51 @@
+# cde.yaml — project-level config for `cde`.
+# Edit this file once per project. The CLI reads it from the project root.
+
+# ---------------------------------------------------------------------------
+# Required
+# ---------------------------------------------------------------------------
+
+image:
+  registry: gcr.io/REPLACE-ME              # change this
+  name: REPLACE-ME                         # final tag is auto: <name>:cde-<sha7>
+  dockerfile: ./Dockerfile
+  context: .
+
+# Path to the Jinja2 JobSet template, relative to project root.
+template: ./manifests/jobset.yaml.j2
+
+# Team key from the cluster's team-quota ConfigMap. xpk / kubectl uses
+# this to route the workload.
+team: REPLACE-ME
+
+# ---------------------------------------------------------------------------
+# Optional — sane defaults are applied when these are absent
+# ---------------------------------------------------------------------------
+
+defaults:
+  value-class: development                 # one of valueClasses in the ConfigMap
+  declared-duration-minutes: 60            # honest p90; controller stops at min(team_cap, x*1.5)
+  tpu-type: tpu7x-128                      # informational; the template uses this
+  num-slices: 1
+
+# Skaffold-replacement: paths cde sync mirrors into a running pod.
+# Empty = sync mode unavailable. Add as you find files worth syncing.
+sync: []
+# - src: src/                              # local path
+#   dest: /workspace/src/                  # in-pod path
+
+# Auto-wired profile location. cde run --profile sets
+# JAX_PROFILER_DIR=<base-uri>/<run_id>/ in the pod's env.
+# profile:
+#   base-uri: gs://my-bucket/cde-profiles
+
+history:
+  path: ~/.cde/history.sqlite              # default
+  # gcs_uri: gs://my-bucket/cde/runs.jsonl # opt-in multi-machine write-through
+
+# Default values made available to the template under {{ defaults.* }}.
+# Override per-run with `cde run --set key=value`.
+defaults_overrides: {}
+# defaults_overrides:
+#   batch_size: 1024
+#   ep: 32

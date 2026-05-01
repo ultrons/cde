@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+
+# Editor
+*.swp
+.vscode/
+.idea/
+
+# cde-local state in dev sandboxes
+.cde/
+*.local.yaml
