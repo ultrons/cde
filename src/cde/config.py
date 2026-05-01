@@ -50,7 +50,9 @@ class ProfileConfig:
 
 @dataclass
 class HistoryConfig:
-  path: str = "~/.cde/history.sqlite"
+  # Empty = use cde.paths.history_db_path() (respects $CDE_HOME). Override
+  # only when you genuinely need a non-default location.
+  path: str = ""
   gcs_uri: str | None = None       # opt-in multi-machine write-through
 
 
@@ -66,10 +68,11 @@ class Defaults:
 class CdeConfig:
   """The parsed shape of cde.yaml.
 
-  Required: image (registry + name), template (manifest path), team.
-  Everything else has defaults.
+  Required: project (logical name), image (registry + name), template
+  (manifest path), team. Everything else has defaults.
   """
 
+  project: str                     # logical project name; runs partitioned by this
   image: ImageConfig
   template: str                    # e.g. ./manifests/jobset.yaml.j2
   team: str
@@ -118,6 +121,11 @@ def _require(d: dict[str, Any], key: str, source: str) -> Any:
 
 
 def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
+  # project — required, used to partition history per project on a host
+  project = _require(raw, "project", source)
+  if not isinstance(project, str) or not project.strip():
+    raise ConfigError(f"{source}: `project` must be a non-empty string")
+
   # image
   image_raw = _require(raw, "image", source)
   if not isinstance(image_raw, dict):
@@ -180,7 +188,7 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
   if not isinstance(hist_raw, dict):
     raise ConfigError(f"{source}: `history` must be a mapping")
   history = HistoryConfig(
-      path=hist_raw.get("path", "~/.cde/history.sqlite"),
+      path=hist_raw.get("path", ""),
       gcs_uri=hist_raw.get("gcs_uri"),
   )
 
@@ -190,6 +198,7 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
     raise ConfigError(f"{source}: `defaults_overrides` must be a mapping")
 
   return CdeConfig(
+      project=project,
       image=image,
       template=template,
       team=team,

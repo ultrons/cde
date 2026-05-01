@@ -29,6 +29,7 @@ from cde import (
     k8s,
     logging as log,
     paths,
+    recent,
     templating,
 )
 from cde import preferences as prefs_mod
@@ -76,6 +77,25 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       help="template variable override (repeatable)",
   )
   p.add_argument(
+      "--inherit",
+      dest="inherit_from",
+      default=None,
+      metavar="RUN_ID",
+      help=(
+          "Copy --set overrides from <RUN_ID> as the base for this run."
+          " --set values on this run override inherited keys."
+          " Records parent_run for cde lineage."
+      ),
+  )
+  p.add_argument(
+      "--profile",
+      action="store_true",
+      help=(
+          "Auto-wire profile_uri = <profile.base-uri>/<run_id>/ on the row"
+          " and inject JAX_PROFILER_DIR=... into the pod env."
+      ),
+  )
+  p.add_argument(
       "--render-only",
       action="store_true",
       help="render the manifest to stdout and exit (no apply, no record)",
@@ -119,18 +139,74 @@ def run(args: argparse.Namespace) -> int:
   project_root = cfg_path.parent
 
   set_overrides = _parse_set(args.set)
-  value_class = args.value_class or cfg.defaults.value_class
-  declared_min = (
-      args.declared_minutes
-      if args.declared_minutes is not None
-      else cfg.defaults.declared_duration_minutes
-  )
-  num_slices = (
-      args.num_slices
-      if args.num_slices is not None
-      else cfg.defaults.num_slices
-  )
+
+  # Sticky defaults from last run in this project. Only used when the
+  # corresponding flag was NOT explicitly passed. Logged when applied so
+  # the inheritance is never silent.
+  sticky = recent.load(cfg.project)
+
+  if args.value_class is not None:
+    value_class = args.value_class
+  elif sticky.value_class is not None:
+    value_class = sticky.value_class
+    log.detail("defaulting --value-class=%s from your last run", value_class)
+  else:
+    value_class = cfg.defaults.value_class
+
+  if args.declared_minutes is not None:
+    declared_min = args.declared_minutes
+  elif sticky.declared_minutes is not None:
+    declared_min = sticky.declared_minutes
+    log.detail(
+        "defaulting --declared-minutes=%d from your last run", declared_min
+    )
+  else:
+    declared_min = cfg.defaults.declared_duration_minutes
+
+  if args.num_slices is not None:
+    num_slices = args.num_slices
+  elif sticky.num_slices is not None:
+    num_slices = sticky.num_slices
+    log.detail("defaulting --num-slices=%d from your last run", num_slices)
+  else:
+    num_slices = cfg.defaults.num_slices
   namespace, priority_class = _derive_namespace_priorityclass(cfg)
+
+  # --inherit: pull the parent's overrides as the base, then layer this
+  # run's --set on top. Also captures the parent_run for lineage.
+  parent_run_id: str | None = None
+  inherited_overrides: dict[str, Any] = {}
+  if args.inherit_from:
+    history_path = _resolve_history_path(cfg)
+    with db.open_db(history_path) as conn:
+      parent = db.get_run(conn, args.inherit_from)
+    if parent is None:
+      log.err(
+          "--inherit %r: no such run in history. Try `cde history` to list.",
+          args.inherit_from,
+      )
+      return 1
+    inherited_overrides = dict(parent.overrides)
+    parent_run_id = parent.run_id
+    log.detail(
+        "inheriting %d override(s) from %s: %s",
+        len(inherited_overrides),
+        args.inherit_from,
+        ", ".join(f"{k}={v}" for k, v in sorted(inherited_overrides.items())) or "(none)",
+    )
+
+  # Profile wiring
+  profile_uri: str | None = None
+  profile_dir = ""  # template inserts this into JAX_PROFILER_DIR env
+  if args.profile:
+    if cfg.profile is None or not cfg.profile.base_uri:
+      log.err(
+          "--profile passed but cde.yaml has no `profile.base-uri` set."
+      )
+      return 1
+    profile_uri = cfg.profile.base_uri.rstrip("/") + f"/{args.tag}/"
+    profile_dir = profile_uri
+    log.detail("profile path: %s", profile_uri)
 
   # Compute image tag from current build context. This must match what
   # `cde build` produced. Identical context → identical tag → user
@@ -141,7 +217,19 @@ def run(args: argparse.Namespace) -> int:
   image_tag = f"{cfg.image.repo_path}:cde-{sha7}"
 
   # Build the substitution context for the template.
+  # Override layering, lowest precedence to highest:
+  #   1. cfg.defaults_overrides   (project-stable knobs in cde.yaml)
+  #   2. inherited from --inherit (parent run's --set values)
+  #   3. --set on this run        (highest precedence)
+  effective_overrides = {
+      **cfg.defaults_overrides,
+      **inherited_overrides,
+      **set_overrides,
+  }
   template_path = (project_root / cfg.template).resolve()
+  env_pairs: list[dict[str, str]] = []
+  if profile_dir:
+    env_pairs.append({"name": "JAX_PROFILER_DIR", "value": profile_dir})
   template_ctx: dict[str, Any] = {
       "run_id": args.tag,
       "image": image_tag,
@@ -152,8 +240,9 @@ def run(args: argparse.Namespace) -> int:
       "priority_class": priority_class,
       "tpu_type": cfg.defaults.tpu_type,
       "num_slices": num_slices,
-      "overrides": {**cfg.defaults_overrides, **set_overrides},
-      "env": [],  # populated by --env in v0.5
+      "overrides": effective_overrides,
+      "profile_dir": profile_dir,
+      "env": env_pairs,
   }
 
   log.step("rendering %s", template_path.relative_to(project_root))
@@ -174,6 +263,7 @@ def run(args: argparse.Namespace) -> int:
   run_row = db.Run(
       run_id=args.tag,
       submitter="",
+      project=cfg.project,
       status="submitted",
       git_sha=gi.sha,
       git_dirty=gi.dirty,
@@ -186,8 +276,10 @@ def run(args: argparse.Namespace) -> int:
       declared_min=declared_min,
       k8s_namespace=namespace,
       jobset_name=args.tag,
+      profile_uri=profile_uri,
       notes=args.note,
       hypothesis=args.hypothesis,
+      parent_run=parent_run_id,
   )
 
   with db.open_db(_resolve_history_path(cfg)) as conn:
@@ -216,6 +308,17 @@ def run(args: argparse.Namespace) -> int:
   with db.open_db(_resolve_history_path(cfg)) as conn:
     db.set_status(conn, args.tag, "running")
 
+  # Update sticky defaults for the next run in this project.
+  recent.save(
+      cfg.project,
+      recent.RecentDefaults(
+          value_class=value_class,
+          team=cfg.team,
+          num_slices=num_slices,
+          declared_minutes=declared_min,
+      ),
+  )
+
   log.ok("submitted %s as %s/%s", args.tag, namespace, args.tag)
   log.detail("kubectl logs -n %s -l cde.io/run-id=%s --prefix=true -f", namespace, args.tag)
   return 0
@@ -223,4 +326,6 @@ def run(args: argparse.Namespace) -> int:
 
 def _resolve_history_path(cfg: config.CdeConfig) -> Path:
   raw = cfg.history.path
-  return Path(raw).expanduser() if raw.startswith("~") else Path(raw)
+  if not raw:
+    return paths.history_db_path()
+  return Path(raw).expanduser()

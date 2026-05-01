@@ -65,6 +65,13 @@ _MIGRATIONS: list[str] = [
     CREATE INDEX idx_runs_status ON runs(status);
     CREATE INDEX idx_runs_team ON runs(team);
     """,
+
+    # 002_project.sql — partition runs by logical project name.
+    # Default '' for any pre-existing rows from migration 001.
+    """
+    ALTER TABLE runs ADD COLUMN project TEXT NOT NULL DEFAULT '';
+    CREATE INDEX idx_runs_project ON runs(project);
+    """,
 ]
 
 
@@ -126,6 +133,7 @@ def open_db(db_path: Path) -> Iterator[sqlite3.Connection]:
 class Run:
   run_id: str
   submitter: str = ""
+  project: str = ""                # logical project name; partitions history
   ts_submitted: str = ""           # ISO-8601 UTC; populated on insert if empty
   ts_started: str | None = None
   ts_finished: str | None = None
@@ -207,8 +215,11 @@ def list_runs(
     conn: sqlite3.Connection,
     *,
     submitter: str | None = None,
+    project: str | None = None,
     limit: int = 20,
     status: str | None = None,
+    tag: str | None = None,
+    since: str | None = None,
 ) -> list[Run]:
   q = "SELECT * FROM runs"
   conds: list[str] = []
@@ -216,15 +227,24 @@ def list_runs(
   if submitter is not None:
     conds.append("submitter=?")
     args.append(submitter)
+  if project is not None:
+    conds.append("project=?")
+    args.append(project)
   if status is not None:
     conds.append("status=?")
     args.append(status)
+  if since is not None:
+    conds.append("ts_submitted >= ?")
+    args.append(since)
   if conds:
     q += " WHERE " + " AND ".join(conds)
   q += " ORDER BY ts_submitted DESC LIMIT ?"
   args.append(limit)
   cur = conn.execute(q, args)
-  return [_row_to_run(r) for r in cur.fetchall()]
+  rows = [_row_to_run(r) for r in cur.fetchall()]
+  if tag is not None:
+    rows = [r for r in rows if tag in r.tags]
+  return rows
 
 
 def update_run(

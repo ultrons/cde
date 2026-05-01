@@ -22,16 +22,19 @@ def test_connect_creates_db_and_runs_migrations(db_path):
   assert "schema_migrations" in tables
   cur = conn.execute("SELECT version FROM schema_migrations ORDER BY version")
   versions = [row[0] for row in cur.fetchall()]
-  assert versions == [1]
+  # Update as new migrations are appended.
+  assert versions == [1, 2]
   conn.close()
 
 
 def test_migrations_idempotent(db_path):
+  expected = [1, 2]
   db.connect(db_path).close()
   db.connect(db_path).close()  # second connect should be a no-op
   conn = db.connect(db_path)
-  cur = conn.execute("SELECT COUNT(*) FROM schema_migrations")
-  assert cur.fetchone()[0] == 1
+  cur = conn.execute("SELECT version FROM schema_migrations ORDER BY version")
+  versions = [row[0] for row in cur.fetchall()]
+  assert versions == expected
 
 
 def test_insert_and_get_run(db_path):

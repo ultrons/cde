@@ -16,6 +16,7 @@ def _write(p: Path, text: str) -> Path:
 
 def test_minimal_valid_config(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: p
 image:
   registry: gcr.io/example
   name: my-app
@@ -37,13 +38,14 @@ team: alpha
   assert cfg.defaults.num_slices == 1
   assert cfg.sync == []
   assert cfg.profile is None
-  assert cfg.history.path == "~/.cde/history.sqlite"
+  assert cfg.history.path == ""   # empty → caller falls back to paths.history_db_path()
   assert cfg.history.gcs_uri is None
   assert cfg.defaults_overrides == {}
 
 
 def test_full_config_round_trip(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: full-test
 image:
   registry: gcr.io/proj
   name: trainer
@@ -92,6 +94,7 @@ def test_missing_file_raises(tmp_path):
 
 def test_missing_required_field_raises(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: p
 image:
   registry: gcr.io/example
   name: my-app
@@ -115,6 +118,7 @@ def test_invalid_yaml_raises_clean(tmp_path):
 
 def test_image_missing_subfield(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: p
 image:
   registry: gcr.io/example
 template: ./manifests/jobset.yaml.j2
@@ -126,6 +130,7 @@ team: alpha
 
 def test_sync_must_be_list(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: p
 image:
   registry: gcr.io/example
   name: my-app
@@ -139,6 +144,7 @@ sync: 'just a string'
 
 def test_empty_team_rejected(tmp_path):
   cfg_path = _write(tmp_path / "cde.yaml", """
+project: p
 image:
   registry: gcr.io/example
   name: my-app

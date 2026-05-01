@@ -66,19 +66,41 @@ def test_init_no_history_skips_db(in_tmp):
 
 
 def test_scaffolded_cde_yaml_loads(in_tmp):
-  """Make sure the scaffolded cde.yaml is a *parseable* template, even
-  though it has REPLACE-ME placeholders. We patch the placeholders
-  before loading."""
-  result = _run_cde("init", env_overrides={"CDE_HOME": str(in_tmp / ".cde")})
+  """Make sure the scaffolded cde.yaml is parseable. cde init pre-fills
+  project + image.name from the cwd basename; we just patch the
+  remaining REPLACE-ME tokens (registry, team) before loading."""
+  result = _run_cde(
+      "init", "--project", "demo-project",
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
   assert result.returncode == 0, result.stderr
 
   text = (in_tmp / "cde.yaml").read_text()
-  # Replace REPLACE-ME tokens to make the YAML valid for load().
   patched = text.replace("REPLACE-ME", "alpha")
   cfg_path = in_tmp / "cde.yaml.patched"
   cfg_path.write_text(patched)
 
   from cde import config
   cfg = config.load(cfg_path)
+  assert cfg.project == "demo-project"
+  assert cfg.image.name == "demo-project"  # init defaulted it
   assert cfg.team == "alpha"
-  assert cfg.image.name == "alpha"
+
+
+def test_init_defaults_project_to_cwd_basename(in_tmp):
+  result = _run_cde("init", env_overrides={"CDE_HOME": str(in_tmp / ".cde")})
+  assert result.returncode == 0, result.stderr
+  text = (in_tmp / "cde.yaml").read_text()
+  expected = in_tmp.name
+  assert f"project: {expected}" in text
+  assert f"name: {expected}" in text
+
+
+def test_init_explicit_project(in_tmp):
+  result = _run_cde(
+      "init", "--project", "my-cool-experiment",
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
+  assert result.returncode == 0, result.stderr
+  text = (in_tmp / "cde.yaml").read_text()
+  assert "project: my-cool-experiment" in text

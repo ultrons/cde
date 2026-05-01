@@ -20,7 +20,13 @@ _COMMANDS = [
     "init",
     "build",
     "run",
-    # later: history, annotate, compare, sync, watch, server, profile
+    "history",
+    "annotate",   # registers annotate / hypothesize / tag / untag
+    "compare",
+    "lineage",
+    "defaults",
+    "profile",
+    # later: sync, watch, server
 ]
 
 

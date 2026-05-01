@@ -5,6 +5,12 @@
 # Required
 # ---------------------------------------------------------------------------
 
+# Logical project name. cde history is partitioned by this — multiple
+# projects under the same parent dir (e.g. several experiments inside a
+# maxtext clone) get separate run histories. Default is the basename of
+# the project directory; edit if that's not the right grouping.
+project: REPLACE-ME
+
 image:
   registry: gcr.io/REPLACE-ME              # change this
   name: REPLACE-ME                         # final tag is auto: <name>:cde-<sha7>
@@ -39,8 +45,8 @@ sync: []
 # profile:
 #   base-uri: gs://my-bucket/cde-profiles
 
-history:
-  path: ~/.cde/history.sqlite              # default
+history: {}
+  # path: ~/.cde/history.sqlite            # default — uses $CDE_HOME if set
   # gcs_uri: gs://my-bucket/cde/runs.jsonl # opt-in multi-machine write-through
 
 # Default values made available to the template under {{ defaults.* }}.
