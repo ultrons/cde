@@ -4,15 +4,19 @@
      run_id              user-supplied tag (e.g. v140)
      image               full image path including tag (cde-<sha7>)
      team                from cde.yaml
-     value_class         from defaults / overrides
-     declared_minutes    from defaults / overrides
-     namespace           resolved from team-quota ConfigMap
-     priority_class      resolved from team-quota ConfigMap
-     tpu_type            from defaults / overrides
-     num_slices          from defaults / overrides
-     overrides           free-form dict of --set values
-     env                 list of {name, value} dicts merged from --env
-
+     value_class         from cde.yaml defaults / --value-class
+     declared_minutes    from cde.yaml defaults / --declared-minutes
+     namespace           team-<team> by default; override via cde.yaml
+     priority_class      <namespace>-priority by default; override via cde.yaml
+     tpu_type            from cde.yaml defaults
+     num_slices          from cde.yaml defaults / --num-slices
+     overrides           dict of effective --set values (project defaults +
+                         --inherit'd parent + this run's --set, last wins).
+                         Booleans set via --flag/--no-flag come through as
+                         Python True/False — render as bare flags, not key=value.
+     profile_dir         non-empty when `cde run --profile` was passed
+     env                 list of {name, value} dicts cde injected (e.g.
+                         JAX_PROFILER_DIR when --profile was used)
 #}
 apiVersion: jobset.x-k8s.io/v1alpha2
 kind: JobSet
@@ -57,7 +61,9 @@ spec:
               command: ["/bin/bash", "-c"]
               args:
                 - |
-                  python train.py {% for k, v in overrides.items() %}--{{ k }}={{ v }} {% endfor %}
+                  python train.py {% for k, v in overrides.items() -%}
+                  {%- if v is sameas true %}--{{ k }} {% elif v is sameas false %}{# omitted: --no-flag {{ k }} #}{% else %}--{{ k }}={{ v }} {% endif %}
+                  {%- endfor %}
               env:
               - name: CDE_RUN_ID
                 value: "{{ run_id }}"

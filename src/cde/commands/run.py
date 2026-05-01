@@ -79,7 +79,28 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       action="append",
       default=[],
       metavar="KEY=VALUE",
-      help="template variable override (repeatable)",
+      help="template variable override (repeatable). Values are strings.",
+  )
+  p.add_argument(
+      "--flag",
+      action="append",
+      default=[],
+      metavar="NAME",
+      help=(
+          "Set override NAME to True (repeatable). Templates render bool-True"
+          " overrides as bare `--name` flags, not `--name=value`."
+      ),
+  )
+  p.add_argument(
+      "--no-flag",
+      dest="no_flag",
+      action="append",
+      default=[],
+      metavar="NAME",
+      help=(
+          "Set override NAME to False (repeatable). Useful for explicitly"
+          " disabling a flag inherited from --inherit or defaults_overrides."
+      ),
   )
   cli.set_completer(
       p.add_argument(
@@ -134,6 +155,20 @@ def _parse_set(items: list[str]) -> dict[str, str]:
   return out
 
 
+def _parse_flags(
+    flag_items: list[str], no_flag_items: list[str]
+) -> dict[str, bool]:
+  """Merge --flag NAME (True) and --no-flag NAME (False) into one dict.
+  --no-flag wins over --flag if both name the same key on this run, since
+  it's the more explicit "I do not want this" gesture."""
+  out: dict[str, bool] = {k.strip(): True for k in flag_items if k.strip()}
+  for k in no_flag_items:
+    name = k.strip()
+    if name:
+      out[name] = False
+  return out
+
+
 def _derive_namespace_priorityclass(
     cfg: config.CdeConfig,
 ) -> tuple[str, str]:
@@ -154,7 +189,18 @@ def run(args: argparse.Namespace) -> int:
   prefs = prefs_mod.load()
   project_root = cfg_path.parent
 
-  set_overrides = _parse_set(args.set)
+  set_overrides: dict[str, Any] = dict(_parse_set(args.set))
+  flag_overrides = _parse_flags(args.flag, args.no_flag)
+  # --flag / --no-flag take precedence over a same-key --set on this run:
+  # mixing both for the same key is almost certainly a mistake, and the bool
+  # form is the more explicit shape.
+  for k, v in flag_overrides.items():
+    if k in set_overrides:
+      log.warn(
+          "--flag/--no-flag %s overrides earlier --set %s=%s on this run",
+          k, k, set_overrides[k],
+      )
+    set_overrides[k] = v
 
   # Sticky defaults from last run in this project. Only used when the
   # corresponding flag was NOT explicitly passed. Logged when applied so
@@ -304,8 +350,10 @@ def run(args: argparse.Namespace) -> int:
       return 1
     db.insert_run(conn, run_row)
 
+  ctx = k8s.current_context()
   log.step(
-      "applying to namespace=%s priorityClass=%s%s",
+      "applying to context=%s namespace=%s priorityClass=%s%s",
+      ctx or "(unset — kubectl will fail)",
       namespace,
       priority_class,
       " (dry-run)" if args.dry_run else "",
@@ -344,7 +392,12 @@ def run(args: argparse.Namespace) -> int:
     from cde.commands import logs as logs_cmd  # local import to avoid cycle
 
     wait_args = argparse.Namespace(
-        run_id=args.tag, follow=True, since=None,
+        run_id=args.tag,
+        follow=True,
+        since=None,
+        all_pods=False,
+        replica=None,
+        container=None,
     )
     return logs_cmd.run(wait_args)
 

@@ -31,9 +31,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       help="Build locally only; skip push.",
   )
   p.add_argument(
-      "--print-tag",
+      "--show-tag", "--print-tag",
+      dest="show_tag",
       action="store_true",
-      help="Print the resolved tag and exit (no build).",
+      help="Print the resolved tag and exit without building or pushing.",
   )
   p.set_defaults(func=run)
 
@@ -61,7 +62,8 @@ def run(args: argparse.Namespace) -> int:
   tag = f"{cfg.image.repo_path}:cde-{sha7}"
   log.detail("image tag: %s", tag)
 
-  if args.print_tag:
+  if args.show_tag:
+    log.detail("(--show-tag: skipping build and push)")
     print(tag)
     return 0
 

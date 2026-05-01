@@ -26,6 +26,18 @@ class KubectlError(RuntimeError):
   """A kubectl invocation failed."""
 
 
+def current_context() -> str | None:
+  """Return `kubectl config current-context`, or None if it's unset/empty."""
+  proc = subprocess.run(
+      ["kubectl", "config", "current-context"],
+      capture_output=True, text=True, check=False,
+  )
+  if proc.returncode != 0:
+    return None
+  ctx = proc.stdout.strip()
+  return ctx or None
+
+
 # ---------------------------------------------------------------------------
 # apply
 # ---------------------------------------------------------------------------

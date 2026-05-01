@@ -130,14 +130,23 @@ explicitly passed, and **logs the inheritance** so it's never silent.
 experimental knob. To carry `--set` values forward across runs, use
 `--inherit <prior_run_id>` explicitly.
 
+For training/inference scripts that take **bare boolean flags** (e.g.
+vLLM's `--enforce-eager`, DSv3's `--gradient_checkpoint`), use
+`--flag NAME` and `--no-flag NAME` instead of `--set`. Booleans land in
+the `overrides` dict as Python `True` / `False`; the scaffolded
+`jobset.yaml.j2` renders `True` as a bare flag, `False` as omitted, and
+everything else as `--key=value`. Mixing `--flag X` and `--set X=...` on
+the same run logs a warning — the `--flag` form wins, since that's the
+more explicit shape.
+
 ## Verb reference
 
 | Verb | What it does | Most-useful flags |
 |---|---|---|
 | `cde init` | Scaffold cde.yaml + manifest template + history DB | `--project`, `--force`, `--no-history` |
-| `cde build` | Docker build + push, hash-tagged | `--print-tag`, `--no-push`, `--force` |
-| `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--value-class`, `--declared-minutes`, `--num-slices` |
-| `cde logs` | Tail kubectl logs; refresh status when done | `--no-follow`, `--since 5m` |
+| `cde build` | Docker build + push, hash-tagged | `--show-tag` (alias `--print-tag`), `--no-push`, `--force` |
+| `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--value-class`, `--declared-minutes`, `--num-slices` |
+| `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pick replica), `-c NAME` (pick container), `--no-follow`, `--since 5m` |
 | `cde shell` | k9s scoped to project namespace | `--exec <run>` for kubectl exec |
 | `cde reap` | Refresh status for in-flight runs | `--all` (cross-project), `--limit` |
 | `cde history` | Table of recent runs in this project | `--json`, `--tag`, `--status`, `--since 7d`, `--all`, `--project`, `--limit`; positional `<run_id>` for one row |

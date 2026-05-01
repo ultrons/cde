@@ -49,9 +49,24 @@ history: {}
   # path: ~/.cde/history.sqlite            # default — uses $CDE_HOME if set
   # gcs_uri: gs://my-bucket/cde/runs.jsonl # opt-in multi-machine write-through
 
-# Default values made available to the template under {{ defaults.* }}.
-# Override per-run with `cde run --set key=value`.
+# Default values made available to the template under {{ overrides.* }}.
+# Override per-run with `cde run --set key=value`. Use `cde run --flag NAME`
+# (or `--no-flag NAME`) for bare boolean flags that don't take a value.
+#
+# By default cde derives:
+#   namespace      = team-<team>
+#   priority_class = <namespace>-priority
+# If your cluster doesn't follow that convention (e.g. shared `poc-dev`
+# namespace), uncomment the keys below to pin them.
 defaults_overrides: {}
 # defaults_overrides:
 #   batch_size: 1024
 #   ep: 32
+#   # namespace: poc-dev
+#   # priority_class: poc-dev-priority
+#
+#   # XLA / JAX compilation cache. Defaulting to a per-run prefix means
+#   # every `cde run` cold-compiles, which can swing perf 5-10% on the
+#   # same image+args. For repeated iteration on the same model, prefer a
+#   # stable prefix keyed off the model+config (NOT run_id):
+#   # jax_compilation_cache_dir: gs://my-bucket/jax-cc/<model>-<topology>-<gbs>

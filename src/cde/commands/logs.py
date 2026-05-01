@@ -141,6 +141,12 @@ def run(args: argparse.Namespace) -> int:
     )
 
   if not args.follow:
+    if r.status == "running":
+      log.detail(
+          "run still marked 'running' in history; "
+          "rerun without --no-follow, or `cde reap %s` to refresh.",
+          r.run_id,
+      )
     return rc
 
   # After --follow exits, refresh status from JobSet.

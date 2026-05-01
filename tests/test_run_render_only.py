@@ -114,3 +114,25 @@ def test_invalid_set_format_errors(project):
   result = _cde("run", "--tag", "v005", "--render-only", "--set", "no-equals")
   assert result.returncode != 0
   assert "--set" in result.stderr
+
+
+def test_flag_renders_as_bare_flag(project):
+  result = _cde(
+      "run", "--tag", "v006", "--render-only",
+      "--flag", "gradient_checkpoint",
+      "--flag", "enforce_eager",
+      "--no-flag", "use_v2_block_manager",
+      "--set", "ep=32",
+  )
+  assert result.returncode == 0, result.stderr
+  import yaml
+  doc = yaml.safe_load(result.stdout)
+  args_str = (
+      doc["spec"]["replicatedJobs"][0]["template"]["spec"]
+      ["template"]["spec"]["containers"][0]["args"][0]
+  )
+  assert "--gradient_checkpoint " in args_str
+  assert "--enforce_eager " in args_str
+  assert "--ep=32" in args_str
+  # --no-flag must NOT emit a key=value or a bare flag
+  assert "use_v2_block_manager" not in args_str
