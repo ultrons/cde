@@ -120,6 +120,22 @@ cde/
     server-loop.md           # inference workflow guide
 ```
 
+## Configuration layers
+
+Two YAML files, both loaded by cde at startup, with project-level
+overriding user-level:
+
+| File | Scope | What lives here |
+|---|---|---|
+| `~/.cde/preferences.yaml` | Per-user, all cde projects | Build driver (docker/podman), `sudo` prefix, color, editor, default GCS bucket for profiles, etc. See [`preferences.example.yaml`](./preferences.example.yaml) for the full schema. |
+| `<project>/cde.yaml` | Per-project | image, team, template, sync paths, project-specific defaults. The required field every project must set. |
+
+The `~/.cde/preferences.yaml` is the migration target for things that
+were previously human-prose instructions in `~/.claude/CLAUDE.md` (e.g.
+"always use local docker build"). With cde owning the build pipeline,
+those preferences become machine-readable config that cde enforces,
+not free-form instructions Claude has to remember to follow.
+
 ## Data model
 
 ### cde.yaml (per-project config)

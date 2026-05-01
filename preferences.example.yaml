@@ -1,0 +1,80 @@
+# cde — user-level preferences.
+#
+# Lives at ~/.cde/preferences.yaml at runtime. Per-project values in
+# <project>/cde.yaml override anything declared here.
+#
+# This file is the *schema* — every key cde will look for is defined
+# here with its default. Copy to ~/.cde/preferences.yaml and edit the
+# values you want to customise; keys you don't override fall back to
+# these defaults.
+#
+# Schema version is independent of cde's release version. Only bump
+# when an existing key changes meaning; new keys with safe defaults do
+# not require a bump.
+
+schema_version: 1
+
+# ---------------------------------------------------------------------------
+# Build pipeline (used by `cde build`, `cde watch`, `cde run --mode=build`)
+# ---------------------------------------------------------------------------
+build:
+  driver: docker          # docker | podman | nerdctl
+  sudo: true              # prepend `sudo` to driver commands
+  builder: local          # local | gcb (GCP Cloud Build) — gcb deferred to v0.5+
+  use_buildkit: true
+  # Image tag computed as <name>:cde-<sha7-of-build-context>. Identical
+  # context = no rebuild. Pull from below; can be set per-project too.
+  push_after_build: true
+
+# ---------------------------------------------------------------------------
+# Docker / container registry defaults
+# ---------------------------------------------------------------------------
+docker:
+  # When `cde init` scaffolds a new project, this is the registry it
+  # writes into the new cde.yaml as image.registry. Per-project value
+  # always wins.
+  registry_default: ""
+
+# ---------------------------------------------------------------------------
+# Git integration
+# ---------------------------------------------------------------------------
+git:
+  detect_dirty: true      # record git_dirty=true on the run row; warn the user
+  fail_on_dirty: false    # if true, `cde run` refuses to submit with uncommitted changes
+
+# ---------------------------------------------------------------------------
+# CLI behavior
+# ---------------------------------------------------------------------------
+cli:
+  color: auto             # auto | always | never (auto = stderr.isatty())
+  editor: ""              # for cde annotate / cde run --note prompts; "" = $EDITOR
+
+# ---------------------------------------------------------------------------
+# History defaults
+# ---------------------------------------------------------------------------
+history:
+  default_limit: 20       # `cde history` (no flags) shows this many rows
+  # gcs_uri:              # opt-in multi-machine write-through. Per-project override
+                          # in cde.yaml's history.gcs_uri.
+
+# ---------------------------------------------------------------------------
+# Sync mode (used by `cde sync on`)
+# ---------------------------------------------------------------------------
+sync:
+  delete_extras: false    # if true, kubectl-cp removes in-pod files absent from src
+  watch_debounce_ms: 500  # batch rapid-fire saves into one sync
+
+# ---------------------------------------------------------------------------
+# Profile management (used by `cde run --profile`, `cde profile pull/open`)
+# ---------------------------------------------------------------------------
+profile:
+  # Used when `cde init` scaffolds a new project; per-project cde.yaml
+  # always wins. Empty = cde init does not pre-populate.
+  default_base_uri: ""
+
+# ---------------------------------------------------------------------------
+# Team-quota cluster-side ConfigMap conventions
+# ---------------------------------------------------------------------------
+team_quota:
+  configmap_name: team-quota-config
+  configmap_namespace: kueue-system
