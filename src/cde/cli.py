@@ -18,7 +18,9 @@ from cde import __version__
 # Each module must expose `register(subparsers)`.
 _COMMANDS = [
     "init",
-    # later: build, run, history, annotate, compare, sync, watch, server, profile
+    "build",
+    "run",
+    # later: history, annotate, compare, sync, watch, server, profile
 ]
 
 
