@@ -288,6 +288,12 @@ def run(args: argparse.Namespace) -> int:
       **inherited_overrides,
       **set_overrides,
   }
+  # Reserved keys: these configure cde itself (template gets them as
+  # {{ namespace }} / {{ priority_class }}). Strip from the overrides
+  # dict so user templates iterating `overrides.items()` don't leak
+  # them into args lines.
+  for _reserved in ("namespace", "priority_class"):
+    effective_overrides.pop(_reserved, None)
   template_path = (project_root / cfg.template).resolve()
   env_pairs: list[dict[str, str]] = []
   if profile_dir:

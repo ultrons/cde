@@ -116,6 +116,38 @@ def test_invalid_set_format_errors(project):
   assert "--set" in result.stderr
 
 
+def test_namespace_priority_class_filtered_from_overrides(project):
+  """defaults_overrides.namespace + priority_class configure cde itself.
+  They get exposed to the template as {{ namespace }} / {{ priority_class }},
+  but must NOT leak into the `overrides` dict that user templates iterate
+  over for args. Otherwise `python train.py {% for k,v in overrides %}` ends
+  up with `--namespace=...` in the args line."""
+  cfg_path = project / "cde.yaml"
+  text = cfg_path.read_text()
+  text = text.replace(
+      "defaults_overrides: {}",
+      "defaults_overrides:\n  namespace: my-ns\n  priority_class: my-pc",
+      1,
+  )
+  cfg_path.write_text(text)
+
+  result = _cde("run", "--tag", "v100", "--render-only")
+  assert result.returncode == 0, result.stderr
+  import yaml
+  doc = yaml.safe_load(result.stdout)
+  # namespace + priority_class still flow through their first-class slots
+  assert doc["metadata"]["namespace"] == "my-ns"
+  pod_spec = (
+      doc["spec"]["replicatedJobs"][0]["template"]["spec"]
+      ["template"]["spec"]
+  )
+  assert pod_spec["priorityClassName"] == "my-pc"
+  # …but NOT into the args line that iterates `overrides`
+  args_str = pod_spec["containers"][0]["args"][0]
+  assert "namespace=" not in args_str
+  assert "priority_class=" not in args_str
+
+
 def test_flag_renders_as_bare_flag(project):
   result = _cde(
       "run", "--tag", "v006", "--render-only",
