@@ -409,4 +409,9 @@ def run(args: argparse.Namespace) -> int:
   log.detail("2. Edit manifests/jobset.yaml.j2 to fit your workload.")
   log.detail("3. Review .dockerignore — extend it for your project's source layout.")
   log.detail("4. cde build && cde run --tag v001 --note 'first run'")
+  log.detail(
+      "5. Tab completion (per shell):"
+      ' eval "$(register-python-argcomplete cde)"'
+      " (add to ~/.bashrc to persist)"
+  )
   return 0
