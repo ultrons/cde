@@ -64,6 +64,44 @@ def register(subparsers: argparse._SubParsersAction) -> None:
   p.set_defaults(func=run)
 
 
+_DOCKERIGNORE_TEMPLATE = """\
+# cde reads .dockerignore when computing the build-context hash, so anything
+# excluded here keeps the cde-<sha> image tag stable when only project
+# metadata changes — no surprise rebuilds when you edit cde.yaml or notes.
+#
+# Add your own patterns below as the project grows.
+
+cde.yaml
+manifests/
+.cde/
+.git/
+.gitignore
+
+# Editor/OS clutter
+*.swp
+*.swo
+.DS_Store
+.idea/
+.vscode/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+*.egg-info/
+build/
+dist/
+
+# Notes / docs that don't get baked in (override per-project as needed)
+*.md
+NOTES.md
+"""
+
+
 def _scaffold_cde_yaml(project_name: str) -> str:
   """Read the packaged template and substitute the obvious tokens."""
   pkg_templates = ilr.files("cde").joinpath("templates")
@@ -346,6 +384,20 @@ def run(args: argparse.Namespace) -> int:
     log.step("writing %s", manifest_dst.relative_to(cwd))
     manifest_dst.write_text(template_text, encoding="utf-8")
 
+  # `.dockerignore` sets cde's build-context hash. Scaffold sensible
+  # defaults so cde-tag stays stable when only project metadata changes
+  # (cde.yaml, manifests/, scratch notes). Without this, every edit to
+  # those files invalidates the hash and forces a rebuild — bug surfaced
+  # in the vllm onboarding session.
+  dockerignore_dst = cwd / ".dockerignore"
+  if dockerignore_dst.exists() and not args.force:
+    log.detail(
+        ".dockerignore already exists; left as-is (pass --force to overwrite)."
+    )
+  else:
+    log.step("writing %s", dockerignore_dst.relative_to(cwd))
+    dockerignore_dst.write_text(_DOCKERIGNORE_TEMPLATE, encoding="utf-8")
+
   if not args.no_history:
     log.step("initialising history DB at %s", paths.history_db_path())
     paths.ensure_cde_home()
@@ -355,5 +407,6 @@ def run(args: argparse.Namespace) -> int:
   log.ok("cde initialised. Next steps:")
   log.detail("1. Edit cde.yaml — set image.registry and team.")
   log.detail("2. Edit manifests/jobset.yaml.j2 to fit your workload.")
-  log.detail("3. cde build && cde run --tag v001 --note 'first run'")
+  log.detail("3. Review .dockerignore — extend it for your project's source layout.")
+  log.detail("4. cde build && cde run --tag v001 --note 'first run'")
   return 0

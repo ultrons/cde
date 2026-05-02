@@ -50,6 +50,16 @@ def register(subparsers: argparse._SubParsersAction) -> None:
   )
   pu.add_argument("--num-slices", dest="num_slices", type=int, default=None)
   pu.add_argument("--declared-minutes", dest="declared_minutes", type=int, default=None)
+  pu.add_argument(
+      "--context",
+      dest="kubectl_context",
+      default=None,
+      help=(
+          "kubectl context to apply to. Default: kubectl config"
+          " current-context (snapshotted at submit, recorded on the run row,"
+          " and reused by cde server down / wait-ready / logs / status)."
+      ),
+  )
   cli.set_completer(
       pu.add_argument("--value-class", dest="value_class", default=None),
       completers.value_class_completer,
@@ -170,6 +180,21 @@ def _up(args: argparse.Namespace) -> int:
   log.step("rendering server template %s", template_path.relative_to(project_root))
   manifest = templating.render(template_path, template_ctx)
 
+  if args.kubectl_context:
+    ctx = args.kubectl_context
+  else:
+    ctx = k8s.current_context()
+    if ctx is None:
+      log.err(
+          "no kubectl context available — pass --context, or set one with"
+          " `kubectl config use-context <name>`."
+      )
+      return 1
+    log.info(
+        "no --context given; using current default %s — pass --context to override",
+        ctx,
+    )
+
   gi = git_info.info_for(project_root)
   run_row = db.Run(
       run_id=args.tag,
@@ -186,6 +211,7 @@ def _up(args: argparse.Namespace) -> int:
       value_class=value_class,
       declared_min=declared_min,
       k8s_namespace=namespace,
+      k8s_context=ctx,
       jobset_name=args.tag,
       notes=args.note,
       tags=["server"],
@@ -197,9 +223,9 @@ def _up(args: argparse.Namespace) -> int:
       return 1
     db.insert_run(conn, run_row)
 
-  log.step("applying server JobSet to %s", namespace)
+  log.step("applying server manifest to context=%s namespace=%s", ctx, namespace)
   try:
-    out = k8s.apply(manifest)
+    out = k8s.apply(manifest, context=ctx)
   except k8s.KubectlError as exc:
     with db.open_db(_resolve_db_path(cfg)) as conn:
       db.set_status(conn, args.tag, "failed", finished=True)
@@ -240,10 +266,13 @@ def _down(args: argparse.Namespace) -> int:
     log.err("run %s has no k8s_namespace recorded", r.run_id)
     return 1
 
-  argv = [
-      "kubectl", "delete", "jobset", r.jobset_name or r.run_id,
+  argv = ["kubectl"]
+  if r.k8s_context:
+    argv.append(f"--context={r.k8s_context}")
+  argv.extend([
+      "delete", "jobset", r.jobset_name or r.run_id,
       "-n", r.k8s_namespace, "--ignore-not-found=true",
-  ]
+  ])
   log.step("$ %s", " ".join(argv))
   rc = subprocess.call(argv)
   if rc != 0:
@@ -283,10 +312,14 @@ def _wait_ready(args: argparse.Namespace) -> int:
   port = cfg.server.port
   health_url = cfg.server.health_url
 
+  ctx_args: list[str] = (
+      [f"--context={r.k8s_context}"] if r.k8s_context else []
+  )
+
   # Find the pod (we need it for the port-forward).
   q = subprocess.run(
-      [
-          "kubectl", "get", "pods",
+      ["kubectl"] + ctx_args + [
+          "get", "pods",
           "-n", r.k8s_namespace,
           "-l", f"cde.io/run-id={args.run_id}",
           "-o", "jsonpath={.items[0].metadata.name}",
@@ -298,10 +331,14 @@ def _wait_ready(args: argparse.Namespace) -> int:
     log.err("no pod yet for run %s — wait a few seconds and retry", args.run_id)
     return 1
 
-  log.step("port-forward %s/%s :%d", r.k8s_namespace, pod, port)
+  log.step(
+      "port-forward %s%s/%s :%d",
+      f"context={r.k8s_context} " if r.k8s_context else "",
+      r.k8s_namespace, pod, port,
+  )
   pf = subprocess.Popen(
-      [
-          "kubectl", "port-forward",
+      ["kubectl"] + ctx_args + [
+          "port-forward",
           f"pod/{pod}", "-n", r.k8s_namespace,
           f"{port}:{port}",
       ],

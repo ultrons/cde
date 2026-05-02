@@ -56,6 +56,38 @@ def test_init_force_overwrites(in_tmp):
   assert "# pre-existing" not in text
 
 
+def test_init_writes_dockerignore_with_sensible_defaults(in_tmp):
+  result = _run_cde("init", env_overrides={"CDE_HOME": str(in_tmp / ".cde")})
+  assert result.returncode == 0, result.stderr
+  di = (in_tmp / ".dockerignore")
+  assert di.is_file(), "cde init should scaffold .dockerignore"
+  text = di.read_text()
+  # Things that shouldn't churn the build-context hash
+  for pat in ("cde.yaml", "manifests/", ".cde/", ".git/", "__pycache__/", "*.md"):
+    assert pat in text, f"missing {pat!r} in scaffolded .dockerignore"
+
+
+def test_init_does_not_overwrite_existing_dockerignore(in_tmp):
+  (in_tmp / ".dockerignore").write_text("# user content\nmy-secrets/\n")
+  result = _run_cde("init", env_overrides={"CDE_HOME": str(in_tmp / ".cde")})
+  assert result.returncode == 0, result.stderr
+  text = (in_tmp / ".dockerignore").read_text()
+  assert text == "# user content\nmy-secrets/\n", (
+      "init should not clobber existing .dockerignore without --force"
+  )
+
+
+def test_init_force_overwrites_dockerignore(in_tmp):
+  (in_tmp / ".dockerignore").write_text("# user content\n")
+  result = _run_cde(
+      "init", "--force",
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
+  assert result.returncode == 0, result.stderr
+  text = (in_tmp / ".dockerignore").read_text()
+  assert "cde.yaml" in text  # the scaffolded content
+
+
 def test_init_no_history_skips_db(in_tmp):
   result = _run_cde(
       "init", "--no-history",

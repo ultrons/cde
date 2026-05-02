@@ -153,7 +153,7 @@ more explicit shape.
 
 | Verb | What it does | Most-useful flags |
 |---|---|---|
-| `cde init` | Scaffold cde.yaml + manifest template + history DB | `--project`, `--force`, `--no-history`, `--from-yaml <path>` |
+| `cde init` | Scaffold cde.yaml + manifest template + `.dockerignore` + history DB | `--project`, `--force`, `--no-history`, `--from-yaml <path>` |
 | `cde build` | Docker build + push, hash-tagged | `--show-tag` (alias `--print-tag`), `--no-push`, `--force` |
 | `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--context`, `--value-class`, `--declared-minutes`, `--num-slices` |
 | `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pick replica), `-c NAME` (pick container), `--no-follow`, `--since 5m` |
@@ -168,15 +168,17 @@ more explicit shape.
 | `cde lineage <id>` | Walk parent_run chain backwards | — |
 | `cde defaults` | Show or reset sticky defaults | `--show`, `--reset`, `--reset-all` |
 | `cde profile path <id>` | Print profile_uri (for `gsutil ls $(...)`) | — |
+| `cde server up/down/wait-ready` | Long-lived inference server lifecycle | `up`: `--tag`, `--note`, `--set k=v`, `--context`, `--value-class`, `--declared-minutes`, `--num-slices`. `down`: tears down the JobSet (Deployment/Service teardown coming). `wait-ready`: `--timeout-s`, `--poll-interval-s`. All commands route through the recorded context for the run. |
 
 ### Kubectl context handling
 
-`cde run` snapshots the kubectl context **once at submit time** (or
-takes it from `--context` if you pass one), prints it, passes
-`--context=<that>` to every kubectl invocation in that command, and
-**records it on the run row**. The other verbs (`logs`, `reap`,
-`shell --exec`, `status`) use the recorded context per run rather
-than reading `kubectl config current-context` themselves.
+`cde run` and `cde server up` both snapshot the kubectl context **once
+at submit time** (or take it from `--context` if you pass one), print
+it, pass `--context=<that>` to every kubectl invocation in that
+command, and **record it on the run row**. The other verbs (`logs`,
+`reap`, `shell --exec`, `status`, `server down`, `server wait-ready`)
+use the recorded context per run rather than reading
+`kubectl config current-context` themselves.
 
 Why: `kubectl` is global state — the active context can drift between
 shells/sessions. Earlier versions of cde inherited that drift. Now the
