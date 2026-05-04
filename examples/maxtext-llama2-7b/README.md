@@ -133,9 +133,9 @@ agent-driven sessions.
 ## Step 8 — reading the iteration log later
 
 This is the payoff. Real `cde history` output from the first MaxText
-smoke run on bodaborg-super-rbq (a development-shaped iteration that
-brought up the path end-to-end across 8 attempts, each surfacing a
-distinct cde or workload bug):
+smoke run on a development cluster — a development-shaped iteration
+that brought up the path end-to-end across 8 attempts, each surfacing
+a distinct cde or workload bug:
 
 ```bash
 cde history --tag maxtext-smoke
@@ -155,7 +155,7 @@ cde lineage smoke-008b
 #            → smoke-003 → smoke-002 → smoke-001
 
 cde history smoke-008b --json | jq '.notes' -r
-# First successful MaxText smoke on bodaborg-super-rbq.
+# First successful MaxText smoke on the dev cluster.
 #
 #   step 0: 3.753s (compile-dominated), TFLOP/s/device: 0.062
 #   step 1: 0.351s, TFLOP/s/device: 0.661

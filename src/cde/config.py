@@ -39,7 +39,7 @@ CONFIG_SCHEMA_VERSION = 1
 
 @dataclass
 class ImageConfig:
-  registry: str                    # e.g. gcr.io/tpu-vm-gke-testing
+  registry: str                    # e.g. gcr.io/your-project
   name: str                        # e.g. jaxgpt-tpu
   dockerfile: str = "./Dockerfile"
   context: str = "."

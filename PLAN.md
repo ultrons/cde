@@ -148,7 +148,7 @@ not free-form instructions an agent has to remember to follow.
 # All fields have sensible defaults; only image and team are required.
 
 image:
-  registry: gcr.io/tpu-vm-gke-testing
+  registry: gcr.io/your-project
   name: jaxgpt-tpu                       # final tag is auto: <name>:cde-<sha7>
   dockerfile: ./Dockerfile               # relative to repo root
   context: .                             # build context
@@ -170,12 +170,14 @@ sync:
 
 # Auto-wired profile location
 profile:
-  base-uri: gs://sivaibhav-exp/cde-profiles
+  base-uri: gs://your-bucket/cde-profiles
   # actual path: <base-uri>/<run_id>/
 
 # History config
 history:
-  path: ~/.cde/history.sqlite            # default
+  # Default path: $CDE_HOME/history.sqlite (CDE_HOME defaults to ~/.cde).
+  # Override only when you genuinely need a non-default location.
+  path: ""
   # gcs_uri: gs://my-bucket/cde/runs.jsonl  # opt-in, multi-machine
 
 # Defaults the user can override per-run via --set
@@ -240,33 +242,46 @@ CREATE INDEX idx_runs_team ON runs(team);
 Migrations: a tiny `apply_migrations(db)` reads `schema_migrations`,
 applies any in `src/cde/migrations/0NN_*.sql` not yet present.
 
-## v0 verb list (week 1)
+## Shipped verb list
 
 ```
-cde init                    # scaffold cde.yaml + manifest template + ~/.cde/
-cde build                   # docker build + push; tag = cde-<context-hash>
-cde watch                   # opt-in: rebuild-on-save; print "ready to run"
+cde init [--from-yaml <path>]  # scaffold cde.yaml + manifest template; --from-yaml
+                                # accepts existing JobSet/Pathways YAML and preserves
+                                # multi-replicatedJob structure
+cde build [--base-image <ref>] # docker build + push, tag = cde-<context-hash>;
+                                # --base-image switches to crane-append fast-path
+                                # (~1-2s, no Docker daemon)
+cde watch                       # opt-in: rebuild-on-save; print "ready to run"
 cde run [--mode=…] [--set k=v] [--tag X] [--note "..."] [--profile]
-                            # render + apply + record history
-cde history                 # last 20 runs, table view
-cde history <run_id>        # full row, JSON
-cde history --json          # all rows, JSON (for humans + coding agents)
-cde annotate <run> "..."    # update notes
-cde tag <run> <tag>         # add tag
-cde compare <a> <b>         # diff overrides + notes + (optional) manifest
-cde logs <run>              # tail the JobSet's pods
-cde shell                   # k9s shortcut filtered to current namespace
-cde sync on/off             # toggle sync mode for the current run
-cde quota                   # show team-quota status (read team-quota ConfigMap)
+        [--inherit <run>] [--context <ctx>]
+                                # render + apply + record history; --inherit forks
+                                # overrides from a prior run; --context snapshots
+                                # the kubectl context onto the run row
+cde history                     # last 20 runs, table view
+cde history <run_id>            # full row, JSON
+cde history --json              # all rows, JSON (for humans + coding agents)
+cde status <tag>                # live cluster view of a run (rolls up all
+                                # replicatedJobsStatus entries for Pathways)
+cde annotate <run> "..."        # update notes
+cde tag <run> <tag>             # add tag
+cde compare <a> <b>             # diff overrides + notes + (optional) manifest
+cde logs <run> [-r <name>]      # tail the JobSet's pods; -r selects a named
+                                # replicatedJob for Pathways
+cde shell                       # k9s shortcut filtered to current namespace
+cde sync on/off                 # toggle sync mode for the current run
+cde prune                       # delete failed/evicted runs (keep-tagged,
+                                # keep-annotated, keep-recent 7d by default)
+cde quota                       # show team-quota status (read team-quota ConfigMap)
+cde server up/down/reload/wait-ready
+                                # inference lifecycle
+cde profile pull/open <run>     # auto-wired GCS paths
+cde lineage <run>               # walk parent_run chain
 ```
 
-## v0.5 verb list (week 2)
+## Not yet shipped
 
 ```
-cde server up/down/reload/wait-ready    # inference lifecycle
-cde profile pull/open <run>             # auto-wired GCS paths
-cde lineage <run>                       # walk parent_run chain
-cde sync history                        # GCS write-through (multi-machine)
+cde sync history                # GCS write-through (multi-machine run history)
 ```
 
 ## v1 backlog
@@ -281,22 +296,28 @@ cde eval <suite>            # eval clients separate from bench
 
 ## Implementation order (code-first)
 
-1. **Phase 0 (this session):** PLAN.md, project skeleton, `config.py`,
-   `db.py`, `paths.py`, `cli.py`, `commands/init.py`. Tests for each.
-   `cde init` works in a tmp dir.
-2. **Phase 1:** `docker.py`, `templating.py`, `commands/build.py`,
-   `commands/run.py` (subset: just restart-mode, no sync/build auto-detect).
-   First usable end-to-end loop.
-3. **Phase 2:** `commands/history.py`, `commands/annotate.py`,
-   `commands/compare.py`. Now coding agents can query.
-4. **Phase 3:** `k8s.py` improvements (JobSet wait-ready, log streaming),
-   `commands/logs.py`, `commands/shell.py`.
-5. **Phase 4:** `commands/sync.py` (kubectl-cp watcher) + `commands/watch.py`.
-6. **Phase 5:** `commands/server.py` (server lifecycle for inference).
-7. **Phase 6:** `commands/profile.py` (GCS pull, viewer hand-off).
-8. **Phase 7:** GCS write-through + multi-machine sync.
+Phases 0–6 are shipped. The repo runs `pytest -q` (135 tests) and
+`python -m mypy` green on Python 3.10/3.11/3.12 in GitHub Actions CI.
 
-Each phase commits + pushes; the repo is always green.
+1. **Phase 0 — bootstrap:** PLAN.md, project skeleton, `config.py`,
+   `db.py`, `paths.py`, `cli.py`, `commands/init.py`.
+2. **Phase 1 — build + run:** `docker.py`, `templating.py`, `crane.py`,
+   `commands/build.py` (with `--base-image` crane-append fast-path),
+   `commands/run.py` (with `--inherit` + atomic `--context`).
+3. **Phase 2 — history surface:** `commands/history.py`,
+   `commands/annotate.py`, `commands/compare.py`, `commands/lineage.py`,
+   `commands/prune.py`, `commands/status.py`.
+4. **Phase 3 — k8s ops:** `k8s.py` (JobSet wait-ready, log streaming,
+   replicatedJob status rollup), `commands/logs.py` (with `-r <name>`
+   for Pathways), `commands/shell.py`.
+5. **Phase 4 — sync loop:** `commands/sync.py` (kubectl-cp watcher) +
+   `commands/watch.py`.
+6. **Phase 5 — server lifecycle:** `commands/server.py` (up/down/reload/
+   wait-ready for inference).
+7. **Phase 6 — profile hand-off:** `commands/profile.py` (GCS pull,
+   viewer hand-off).
+8. **Phase 7 (not yet shipped):** GCS write-through + multi-machine
+   history sync.
 
 ## Scope discipline
 
@@ -319,8 +340,8 @@ delegating to skaffold. The reason this stays sustainable:
   validation, template rendering, history CRUD, override merging.
 - **Integration tests** that exercise CLI verbs against a tmp directory
   + an in-memory SQLite. No real cluster needed for v0.
-- **Real-cluster smoke tests** (manual, not CI): one bench run on
-  bodaborg-super-alpha, one inference run on a small cluster.
+- **Real-cluster smoke tests** (manual, not CI): one bench run on a
+  development TPU cluster, one inference run on a small cluster.
   Documented in `docs/smoke-testing.md`.
 
 ## Decisions worth re-checking

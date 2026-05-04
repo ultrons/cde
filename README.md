@@ -196,7 +196,7 @@ run actually went to. If you didn't pass `--context`, cde prints an
 INFO line:
 
 ```
-ℹ no --context given; using current default gke_..._bodaborg-super-rbq — pass --context to override
+ℹ no --context given; using current default gke_<project>_<region>_<cluster> — pass --context to override
 ```
 
 Legacy run rows (recorded before this change) have no context and fall
