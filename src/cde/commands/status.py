@@ -77,6 +77,11 @@ def _gather(r: db.Run) -> dict:
   except k8s.KubectlError as exc:
     out["jobset"] = {"status": "unknown", "error": str(exc)}
 
+  # Per-replicatedJob rollup (Pathways: pathways-head + worker; regular: slice)
+  out["replicated_jobs"] = k8s.get_replicated_jobs_status(
+      ns, jobset_name, context=ctx,
+  )
+
   # Live Workload (Kueue admission)
   out["workload"] = k8s.get_workload_admission(ns, jobset_name, context=ctx)
 
@@ -108,6 +113,19 @@ def _render_text(d: dict) -> None:
     log.detail("JobSet: %s", "  ".join(bits))
     if js.get("message"):
       log.detail("        %s", js["message"])
+
+  rjs_rollup = d.get("replicated_jobs", [])
+  if rjs_rollup:
+    log.detail(
+        "ReplicatedJobs: %d",
+        len(rjs_rollup),
+    )
+    for rj in rjs_rollup:
+      log.detail(
+          "  %-20s active=%d ready=%d succeeded=%d failed=%d",
+          rj["name"][:20], rj["active"], rj["ready"],
+          rj["succeeded"], rj["failed"],
+      )
 
   wl = d.get("workload")
   if wl is None:

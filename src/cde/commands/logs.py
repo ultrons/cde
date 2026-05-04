@@ -47,9 +47,13 @@ def register(subparsers: argparse._SubParsersAction) -> None:
   p.add_argument(
       "-r", "--replica",
       dest="replica",
-      type=int,
+      type=str,
       default=None,
-      help="stream logs from pod index N (0-based, sorted by creation time)",
+      help=(
+          "stream logs from pod index N (0-based, sorted by creation time)"
+          " or from a named replicatedJob (e.g. -r worker, -r pathways-head)."
+          " Multi-replicatedJob JobSets (Pathways) usually want named access."
+      ),
   )
   p.add_argument(
       "-c", "--container",
@@ -111,15 +115,41 @@ def run(args: argparse.Namespace) -> int:
         context=ctx,
     )
   else:
+    # Resolve --replica: numeric index → pod[N] across all matching pods;
+    # string (name) → first pod of the named replicatedJob (matches the
+    # JobSet-injected label `jobset.sigs.k8s.io/replicatedjob-name`).
+    pod_label = label
+    is_named = False
+    if args.replica is not None:
+      try:
+        idx = int(args.replica)
+      except ValueError:
+        # Named replicatedJob: scope the pod listing to that replica.
+        pod_label = (
+            f"{label},jobset.sigs.k8s.io/replicatedjob-name={args.replica}"
+        )
+        idx = 0
+        is_named = True
+    else:
+      idx = 0
+
     try:
-      pods = k8s.list_pods(r.k8s_namespace, label, context=ctx)
+      pods = k8s.list_pods(r.k8s_namespace, pod_label, context=ctx)
     except k8s.KubectlError as exc:
       log.err("%s", exc)
       return 1
     if not pods:
-      log.err("no pods for run %s in %s (label %s)", r.run_id, r.k8s_namespace, label)
+      if is_named:
+        log.err(
+            "no pods for replicatedJob %r on run %s",
+            args.replica, r.run_id,
+        )
+      else:
+        log.err(
+            "no pods for run %s in %s (label %s)",
+            r.run_id, r.k8s_namespace, label,
+        )
       return 1
-    idx = args.replica if args.replica is not None else 0
     if idx < 0 or idx >= len(pods):
       log.err(
           "replica %d out of range (run has %d pod%s: 0..%d)",
@@ -128,12 +158,15 @@ def run(args: argparse.Namespace) -> int:
       return 1
     pod = pods[idx]
     log.step(
-        "tailing %s/%s (replica %d/%d, %d total)%s",
-        r.k8s_namespace, pod, idx, len(pods) - 1, len(pods),
+        "tailing %s/%s (%s, %d total)%s",
+        r.k8s_namespace, pod,
+        f"replica={args.replica}" if is_named
+        else f"replica {idx}/{len(pods) - 1}",
+        len(pods),
         "" if args.follow else " (no follow)",
     )
     if len(pods) > 1 and not args.all_pods and args.replica is None:
-      log.detail("(pass -a to stream all pods, or -r N to pick another replica)")
+      log.detail("(pass -a to stream all pods, or -r N / -r <name> to pick another)")
     rc = k8s.stream_pod_logs(
         namespace=r.k8s_namespace,
         pod=pod,

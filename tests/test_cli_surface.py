@@ -20,10 +20,21 @@ def test_help_lists_all_verbs():
   for verb in (
       "init", "build", "run", "logs", "shell", "reap",
       "watch", "sync", "server",
-      "history", "annotate", "hypothesize", "tag", "untag",
-      "compare", "lineage", "defaults", "profile",
+      "history", "prune", "annotate", "hypothesize", "tag", "untag",
+      "compare", "lineage", "defaults", "profile", "status",
   ):
     assert verb in result.stdout, f"verb {verb!r} missing from --help"
+
+
+def test_logs_replica_accepts_name():
+  """Gap 2: --replica accepts a name (e.g. -r worker, -r pathways-head),
+  not just an integer index. Smoke-test by parsing --help text."""
+  result = _cde("logs", "--help")
+  assert result.returncode == 0, result.stderr
+  assert "named replicatedJob" in result.stdout
+  # Argparse may wrap the help text across lines; check for fragments.
+  assert "worker" in result.stdout
+  assert "pathways-head" in result.stdout
 
 
 def test_each_verb_has_help():

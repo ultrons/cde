@@ -172,33 +172,47 @@ def _from_yaml_scaffold(
   labels = md.setdefault("labels", {})
   spec = js.setdefault("spec", {})
   rjs = spec.setdefault("replicatedJobs", [])
-  rj = rjs[0] if rjs else {}
-  pod_template = (
-      (rj.get("template") or {}).get("spec", {}).get("template", {})
-  )
-  pod_metadata = pod_template.setdefault("metadata", {}) if pod_template else {}
-  pod_labels = pod_metadata.setdefault("labels", {}) if pod_template else {}
-  pod_spec = pod_template.setdefault("spec", {}) if pod_template else {}
-  containers = pod_spec.get("containers", []) if pod_template else []
-  main = containers[0] if containers else {}
+
+  def _pod_template(rj: dict) -> dict | None:
+    """Return the pod template under a replicatedJob, or None."""
+    pt = (rj.get("template") or {}).get("spec", {}).get("template")
+    return pt if isinstance(pt, dict) else None
+
+  def _pod_spec(rj: dict) -> dict:
+    pt = _pod_template(rj) or {}
+    return pt.get("spec", {}) or {}
+
+  def _containers(rj: dict) -> list[dict]:
+    return _pod_spec(rj).get("containers", []) or []
+
+  # Pick a "worker" replicatedJob: the one with the largest `replicas`. This
+  # gives us the user-relevant defaults (image, num_slices, nodeSelector) for
+  # Pathways (head=1, worker=N) and is identical to rjs[0] for regular JobSets.
+  def _replicas_int(rj: dict) -> int:
+    try:
+      return int(rj.get("replicas", 1))
+    except (TypeError, ValueError):
+      return 1
+
+  worker_rj = max(rjs, key=_replicas_int) if rjs else {}
+  worker_replicas = _replicas_int(worker_rj) if worker_rj else 0
+  worker_pod_spec = _pod_spec(worker_rj) if worker_rj else {}
+  worker_containers = _containers(worker_rj) if worker_rj else []
+  user_image = worker_containers[0].get("image") if worker_containers else None
 
   inferred = {
       "team": labels.get("team"),
       "value_class": labels.get("value-class"),
       "declared_minutes": labels.get("declared-duration-minutes"),
       "namespace": md.get("namespace"),
-      "priority_class": pod_spec.get("priorityClassName") if pod_template else None,
-      "image": main.get("image"),
-      "num_slices": rj.get("replicas"),
-      "tpu_type": (
-          (pod_spec.get("nodeSelector") or {}).get(
-              "cloud.google.com/gke-tpu-accelerator"
-          ) if pod_template else None
+      "priority_class": worker_pod_spec.get("priorityClassName"),
+      "image": user_image,
+      "num_slices": worker_rj.get("replicas") if worker_rj else None,
+      "tpu_type": (worker_pod_spec.get("nodeSelector") or {}).get(
+          "cloud.google.com/gke-tpu-accelerator"
       ),
-      "tpu_topology": (
-          (pod_spec.get("nodeSelector") or {}).get(
-              "cloud.google.com/gke-tpu-topology"
-          ) if pod_template else None
+      "tpu_topology": (worker_pod_spec.get("nodeSelector") or {}).get(
+          "cloud.google.com/gke-tpu-topology"
       ),
   }
 
@@ -214,17 +228,28 @@ def _from_yaml_scaffold(
     labels["declared-duration-minutes"] = "{{ declared_minutes }}"
   labels["cde.io/run-id"] = "{{ run_id }}"
 
-  if pod_template:
-    pod_labels.setdefault("cde.io/run-id", "{{ run_id }}")
-    if "declared-duration-minutes" in pod_labels:
-      pod_labels["declared-duration-minutes"] = "{{ declared_minutes }}"
-    if "priorityClassName" in pod_spec:
-      pod_spec["priorityClassName"] = "{{ priority_class }}"
-    if main:
-      main["image"] = "{{ image }}"
-
-  if rj:
-    rj["replicas"] = "{{ num_slices }}"
+  # Walk every replicatedJob: substitute on the user's image (only — leave
+  # Pathways' proxy/server images literal), inject cde.io/run-id label,
+  # template `replicas` only on the worker rj, template priorityClassName.
+  for rj in rjs:
+    pt = _pod_template(rj)
+    if pt is None:
+      continue
+    pmd = pt.setdefault("metadata", {})
+    plabels = pmd.setdefault("labels", {})
+    plabels.setdefault("cde.io/run-id", "{{ run_id }}")
+    if "declared-duration-minutes" in plabels:
+      plabels["declared-duration-minutes"] = "{{ declared_minutes }}"
+    pspec = pt.setdefault("spec", {})
+    if "priorityClassName" in pspec:
+      pspec["priorityClassName"] = "{{ priority_class }}"
+    for c in pspec.get("containers", []) or []:
+      if user_image and c.get("image") == user_image:
+        c["image"] = "{{ image }}"
+    # Replicas: only template the worker (largest replicas count) — leaves
+    # head's `replicas: 1` literal in Pathways manifests.
+    if rj is worker_rj and "replicas" in rj:
+      rj["replicas"] = "{{ num_slices }}"
 
   # Dump and post-process. Use a default_flow_style=False block dump.
   dumped = yaml.safe_dump(js, default_flow_style=False, sort_keys=False)

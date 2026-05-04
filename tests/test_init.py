@@ -302,3 +302,162 @@ def test_from_yaml_no_jobset_errors(in_tmp):
   )
   assert result.returncode == 1
   assert "no JobSet" in result.stderr
+
+
+_PATHWAYS_JOBSET = """\
+apiVersion: jobset.x-k8s.io/v1alpha2
+kind: JobSet
+metadata:
+  name: pathways-bench-001
+  namespace: poc-ml-perf
+  labels:
+    kueue.x-k8s.io/queue-name: lq
+    team: ml-perf
+    value-class: benchmark
+    declared-duration-minutes: "60"
+spec:
+  coordinator:
+    replicatedJob: pathways-head
+  network:
+    enableDNSHostnames: true
+    publishNotReadyAddresses: true
+  failurePolicy:
+    restartStrategy: Recreate
+  replicatedJobs:
+  - name: pathways-head
+    replicas: 1
+    template:
+      spec:
+        parallelism: 1
+        completions: 1
+        template:
+          spec:
+            priorityClassName: poc-ml-perf-priority
+            nodeSelector:
+              cloud.google.com/gke-nodepool: cpu-np
+            containers:
+            - name: pathways-proxy
+              image: us-docker.pkg.dev/cloud-tpu-v2-images/pathways/proxy_server:vXYZ
+            - name: pathways-rm
+              image: us-docker.pkg.dev/cloud-tpu-v2-images/pathways/server:vXYZ
+            - name: trainer
+              image: gcr.io/my-proj/pathways-app:v3
+              command: ["python3", "train.py"]
+  - name: worker
+    replicas: 4
+    template:
+      spec:
+        parallelism: 16
+        completions: 16
+        template:
+          spec:
+            priorityClassName: poc-ml-perf-priority
+            nodeSelector:
+              cloud.google.com/gke-tpu-accelerator: tpu7x
+              cloud.google.com/gke-tpu-topology: 4x4x4
+            containers:
+            - name: jax-worker
+              image: gcr.io/my-proj/pathways-app:v3
+              command: ["bash", "-c"]
+              args: ["sleep infinity"]
+              resources:
+                limits:
+                  google.com/tpu: "4"
+"""
+
+
+def test_from_yaml_preserves_multi_replicatedjob_pathways_shape(in_tmp):
+  """Pathways JobSets have two replicatedJobs (head + worker). The
+  scaffold must preserve both, template the user's image consistently,
+  and template num_slices on the worker (not the head)."""
+  src = in_tmp / "pathways.yaml"
+  src.write_text(_PATHWAYS_JOBSET)
+
+  result = _run_cde(
+      "init", "--project", "pathways-bench",
+      "--from-yaml", str(src),
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
+  assert result.returncode == 0, result.stderr
+
+  cde_yaml = (in_tmp / "cde.yaml").read_text()
+  template = (in_tmp / "manifests" / "jobset.yaml.j2").read_text()
+
+  # cde.yaml — inferred from the worker replicatedJob (replicas=4)
+  assert "registry: gcr.io/my-proj" in cde_yaml
+  assert "name: pathways-app" in cde_yaml
+  assert "team: ml-perf" in cde_yaml
+  assert "tpu-type: tpu7x" in cde_yaml
+  assert "num-slices: 4" in cde_yaml
+  # Non-derived namespace pinned (poc-ml-perf doesn't match team-<team>)
+  assert "namespace: poc-ml-perf" in cde_yaml
+
+  # Template — both replicatedJobs preserved
+  assert "name: pathways-head" in template
+  assert "name: worker" in template
+  # head's replicas stays literal (replicas: 1, not templated)
+  head_section = template.split("name: pathways-head")[1].split("name: worker")[0]
+  assert "replicas: 1" in head_section
+  assert "{{ num_slices }}" not in head_section
+  # worker's replicas IS templated
+  worker_section = template.split("name: worker")[1]
+  assert "replicas: {{ num_slices }}" in worker_section
+  # User's image is templated everywhere it appeared (head trainer + worker)
+  assert "image: {{ image }}" in template
+  # Pathways proxy/server images preserved literal
+  assert "pathways/proxy_server:vXYZ" in template
+  assert "pathways/server:vXYZ" in template
+  # JobSet-level Pathways fields (coordinator, restartStrategy) preserved
+  assert "coordinator:" in template
+  assert "replicatedJob: pathways-head" in template
+  assert "restartStrategy: Recreate" in template
+  # cde.io/run-id label injected on the JobSet itself (pyyaml may quote
+  # the placeholder; either form is fine — Jinja still expands)
+  assert (
+      "cde.io/run-id: {{ run_id }}" in template
+      or "cde.io/run-id: '{{ run_id }}'" in template
+  )
+
+
+def test_from_yaml_pathways_template_renders(in_tmp):
+  """End-to-end: imported Pathways YAML re-renders cleanly via cde run."""
+  src = in_tmp / "pathways.yaml"
+  src.write_text(_PATHWAYS_JOBSET)
+
+  result = _run_cde(
+      "init", "--project", "pathways-bench",
+      "--from-yaml", str(src),
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
+  assert result.returncode == 0, result.stderr
+
+  text = (in_tmp / "cde.yaml").read_text()
+  assert "REPLACE-ME" not in text
+  (in_tmp / "Dockerfile").write_text("FROM scratch\n")
+  (in_tmp / "main.py").write_text("print('ok')\n")
+
+  rendered = _run_cde(
+      "run", "--tag", "p001", "--render-only",
+      env_overrides={"CDE_HOME": str(in_tmp / ".cde")},
+  )
+  assert rendered.returncode == 0, rendered.stderr
+
+  import yaml as _yaml
+  doc = _yaml.safe_load(rendered.stdout)
+  assert doc["kind"] == "JobSet"
+  rjs = doc["spec"]["replicatedJobs"]
+  assert len(rjs) == 2
+  assert rjs[0]["name"] == "pathways-head"
+  assert rjs[0]["replicas"] == 1                  # literal, not templated
+  assert rjs[1]["name"] == "worker"
+  assert rjs[1]["replicas"] == 4                  # default num-slices
+  assert "coordinator" in doc["spec"]
+  # User image substituted; Pathways images preserved
+  head_containers = (
+      rjs[0]["template"]["spec"]["template"]["spec"]["containers"]
+  )
+  by_name = {c["name"]: c for c in head_containers}
+  assert "pathways/proxy_server:vXYZ" in by_name["pathways-proxy"]["image"]
+  assert "pathways/server:vXYZ" in by_name["pathways-rm"]["image"]
+  # trainer's image resolves to the user's image (cde-tagged)
+  assert by_name["trainer"]["image"].startswith("gcr.io/my-proj/pathways-app:cde-")

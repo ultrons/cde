@@ -174,6 +174,38 @@ def list_pods(
   return [n for n in proc.stdout.strip().split() if n]
 
 
+def get_replicated_jobs_status(
+    namespace: str, name: str, *, context: str | None = None,
+) -> list[dict]:
+  """Per-replicatedJob status rollup for a JobSet (pathways-head, worker, …).
+
+  Each entry: {name, active, ready, succeeded, failed}. Returns [] on
+  kubectl error or if the JobSet has no replicatedJobsStatus yet (newly
+  submitted)."""
+  proc = subprocess.run(
+      _kctl(context) + [
+          "get", "jobset", name, "-n", namespace, "-o", "json",
+      ],
+      capture_output=True, text=True, check=False,
+  )
+  if proc.returncode != 0:
+    return []
+  try:
+    obj = json.loads(proc.stdout)
+  except json.JSONDecodeError:
+    return []
+  out = []
+  for r in (obj.get("status") or {}).get("replicatedJobsStatus", []) or []:
+    out.append({
+        "name": r.get("name", ""),
+        "active": r.get("active", 0),
+        "ready": r.get("ready", 0),
+        "succeeded": r.get("succeeded", 0),
+        "failed": r.get("failed", 0),
+    })
+  return out
+
+
 def get_pods_summary(
     namespace: str, label: str, *, context: str | None = None,
 ) -> list[dict]:

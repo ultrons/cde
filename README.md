@@ -156,7 +156,7 @@ more explicit shape.
 | `cde init` | Scaffold cde.yaml + manifest template + `.dockerignore` + history DB | `--project`, `--force`, `--no-history`, `--from-yaml <path>` |
 | `cde build` | Docker build + push, hash-tagged | `--show-tag` (alias `--print-tag`), `--no-push`, `--force` |
 | `cde run` | Render template, apply, record run | `--tag` (required), `--note`, `--hypothesis`, `--set k=v`, `--flag NAME` / `--no-flag NAME`, `--inherit <run_id>`, `--profile`, `--wait`, `--render-only`, `--dry-run`, `--context`, `--value-class`, `--declared-minutes`, `--num-slices` |
-| `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pick replica), `-c NAME` (pick container), `--no-follow`, `--since 5m` |
+| `cde logs` | Tail kubectl logs; refresh status when done | `-a/--all-pods`, `-r N` (pod index) or `-r <replicatedJob-name>` (e.g. `-r worker`, `-r pathways-head`), `-c NAME` (pick container), `--no-follow`, `--since 5m` |
 | `cde status <run>` | Live cluster view of a run | Shows Kueue admission state, JobSet phase, pod-level rollup, recent events. Routes via the recorded kubectl context for the run. `--json` for agents. |
 | `cde shell` | k9s scoped to project namespace | `--exec <run>` for kubectl exec |
 | `cde reap` | Refresh status for in-flight runs | `--all` (cross-project), `--limit` |
