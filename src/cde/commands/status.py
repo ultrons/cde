@@ -1,4 +1,18 @@
-"""`cde status <run>` — live cluster view of a recorded run.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+`cde status <run>` — live cluster view of a recorded run.
 
 Distinct from `cde history <run>` (the recorded row at submit + last
 status refresh) and `cde reap` (status refresh write-back). This verb
@@ -10,7 +24,6 @@ kubectl-archaeology.
 Routes via the recorded `k8s_context` from the run row, so it queries
 the right cluster regardless of the shell's current context.
 """
-
 from __future__ import annotations
 
 import argparse

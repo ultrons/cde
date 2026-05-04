@@ -1,4 +1,18 @@
-"""Sticky defaults — last-used values for a small allowlist of flags.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Sticky defaults — last-used values for a small allowlist of flags.
 
 Lives at ~/.cde/recent.yaml (env-overridable via CDE_RECENT). Stores
 *per-project* history so different projects don't leak defaults into
@@ -18,7 +32,6 @@ Why an allowlist? See PLAN.md. Briefly: --set values are per-experiment
 knobs; making them sticky would silently propagate the very thing
 you're iterating on. The four whitelisted fields don't change run-to-run.
 """
-
 from __future__ import annotations
 
 import datetime

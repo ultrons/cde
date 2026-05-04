@@ -1,4 +1,18 @@
-"""Debounced multi-path file watcher used by `cde watch` and `cde sync`.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Debounced multi-path file watcher used by `cde watch` and `cde sync`.
 
 Wraps watchdog. Two design choices worth knowing:
 
@@ -15,7 +29,6 @@ Wraps watchdog. Two design choices worth knowing:
 Returns when the user Ctrl-C's. Robust to symlinks; ignores files
 matched by a `.dockerignore` if one is found at the watched root.
 """
-
 from __future__ import annotations
 
 import threading

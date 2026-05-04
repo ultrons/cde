@@ -1,4 +1,18 @@
-"""`cde logs <run>` — tail the JobSet's pods, then sync status to history.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+`cde logs <run>` — tail the JobSet's pods, then sync status to history.
 
 Default streams logs from pod 0 (oldest pod matching the run label), all
 containers, prefixed. Multi-pod runs (e.g. JobSet with N replicas) are
@@ -9,7 +23,6 @@ After kubectl exits, polls JobSet status once and updates the history
 row's status + ts_finished. Use `--no-follow` for a one-shot read (no
 status update).
 """
-
 from __future__ import annotations
 
 import argparse

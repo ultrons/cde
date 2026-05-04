@@ -1,4 +1,18 @@
-"""`cde run` — render the project's template, kubectl-apply, record run.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+`cde run` — render the project's template, kubectl-apply, record run.
 
 v0 is fire-and-forget: we apply the manifest, write the history row,
 and exit. Wait/log streaming come in Phase 3.
@@ -13,7 +27,6 @@ Either can be overridden via cde.yaml.defaults_overrides.namespace /
 .priority_class. The next iteration (v0.5) will read these from the
 team-quota ConfigMap on the cluster.
 """
-
 from __future__ import annotations
 
 import argparse

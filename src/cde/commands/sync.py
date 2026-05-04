@@ -1,4 +1,18 @@
-"""`cde sync <run>` — kubectl-cp local edits into a running pod on save.
+"""Copyright 2026 Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+     https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+`cde sync <run>` — kubectl-cp local edits into a running pod on save.
 
 Foreground only. Watches `cfg.sync[*].src` and copies changed files into
 the run's first pod at `cfg.sync[*].dest`. Ctrl-C to stop.
@@ -11,7 +25,6 @@ when you stop iterating, naturally.
 This is the cde-side replacement for `skaffold sync`. No magic
 file-event-to-build-step coupling — sync is just transport.
 """
-
 from __future__ import annotations
 
 import argparse
