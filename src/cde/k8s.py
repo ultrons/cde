@@ -66,14 +66,24 @@ def _kctl(context: str | None) -> list[str]:
 
 
 def apply(
-    manifest_yaml: str, *, dry_run: bool = False, context: str | None = None,
+    manifest_yaml: str,
+    *,
+    dry_run: bool = False,
+    context: str | None = None,
+    validate: bool = True,
 ) -> str:
   """Run `kubectl apply -f -` with the given manifest. Returns kubectl's
   stdout. Raises KubectlError on failure with stderr included.
 
   If `context` is given, kubectl is invoked with `--context=<context>` so
-  the apply targets that cluster regardless of the shell's current-context."""
+  the apply targets that cluster regardless of the shell's current-context.
+
+  Set `validate=False` to pass `--validate=false` to kubectl. Useful in
+  environments where kubectl cannot fetch the cluster's OpenAPI schema
+  (e.g. missing CRD schemas) and rejects otherwise-valid manifests."""
   args = _kctl(context) + ["apply", "-f", "-"]
+  if not validate:
+    args.append("--validate=false")
   if dry_run:
     args.extend(["--dry-run=client", "-o", "name"])
   log.detail("$ %s", " ".join(args))

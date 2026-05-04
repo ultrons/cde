@@ -37,8 +37,30 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+# watchdog is a real dependency in pyproject.toml, but cde is sometimes
+# imported from a vendored / partially-installed environment (the failure
+# mode another agent hit). Guard the import so unrelated verbs like
+# `cde history` keep working; only `cde watch` / `cde sync` need watchdog
+# at runtime.
+try:
+  from watchdog.events import FileSystemEvent, FileSystemEventHandler
+  from watchdog.observers import Observer
+
+  _WATCHDOG_IMPORT_ERROR: ImportError | None = None
+except ImportError as _exc:
+  _WATCHDOG_IMPORT_ERROR = _exc
+
+  class FileSystemEventHandler:  # type: ignore[no-redef]
+    pass
+
+  FileSystemEvent = object  # type: ignore[assignment, misc]
+
+  class Observer:  # type: ignore[no-redef]
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+      raise RuntimeError(
+          "cde watch / cde sync require the 'watchdog' package; "
+          "reinstall cde with: pip install -e ."
+      ) from _WATCHDOG_IMPORT_ERROR
 
 
 ChangeCallback = Callable[[list[Path]], None]

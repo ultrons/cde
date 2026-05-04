@@ -166,6 +166,15 @@ def register(subparsers: argparse._SubParsersAction) -> None:
       action="store_true",
       help="render and apply with kubectl --dry-run=client (no real apply)",
   )
+  p.add_argument(
+      "--no-validate",
+      action="store_true",
+      help=(
+          "pass --validate=false to kubectl apply. Use when kubectl can't "
+          "fetch the cluster's OpenAPI schema (missing CRD schemas) and "
+          "rejects valid manifests"
+      ),
+  )
   p.set_defaults(func=run)
 
 
@@ -404,7 +413,12 @@ def run(args: argparse.Namespace) -> int:
       " (dry-run)" if args.dry_run else "",
   )
   try:
-    out = k8s.apply(manifest, dry_run=args.dry_run, context=ctx)
+    out = k8s.apply(
+        manifest,
+        dry_run=args.dry_run,
+        context=ctx,
+        validate=not args.no_validate,
+    )
   except k8s.KubectlError as exc:
     with db.open_db(_resolve_history_path(cfg)) as conn:
       db.set_status(conn, args.tag, "failed", finished=True)

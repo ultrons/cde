@@ -109,6 +109,18 @@ __pycache__/
 build/
 dist/
 
+# Python venvs (common names) — never want these in the build context
+venv/
+.venv/
+env/
+ENV/
+
+# Scratch / log files generated locally
+*.log
+*.tmp
+*.bak
+*.orig
+
 # Notes / docs that don't get baked in (override per-project as needed)
 *.md
 NOTES.md

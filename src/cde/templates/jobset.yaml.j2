@@ -14,6 +14,11 @@
                          --inherit'd parent + this run's --set, last wins).
                          Booleans set via --flag/--no-flag come through as
                          Python True/False — render as bare flags, not key=value.
+                         Convention: keys starting with `_` are
+                         orchestration-only (consumed elsewhere in this
+                         template, e.g. `_image_override`); the default
+                         python-args loop below skips them so they don't
+                         leak as `--_foo=...` flags into train.py.
      profile_dir         non-empty when `cde run --profile` was passed
      env                 list of {name, value} dicts cde injected (e.g.
                          JAX_PROFILER_DIR when --profile was used)
@@ -61,7 +66,7 @@ spec:
               command: ["/bin/bash", "-c"]
               args:
                 - |
-                  python train.py {% for k, v in overrides.items() -%}
+                  python train.py {% for k, v in overrides.items() if not k.startswith('_') -%}
                   {%- if v is sameas true %}--{{ k }} {% elif v is sameas false %}{# omitted: --no-flag {{ k }} #}{% else %}--{{ k }}={{ v }} {% endif %}
                   {%- endfor %}
               env:
