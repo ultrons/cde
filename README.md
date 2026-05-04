@@ -161,6 +161,7 @@ more explicit shape.
 | `cde shell` | k9s scoped to project namespace | `--exec <run>` for kubectl exec |
 | `cde reap` | Refresh status for in-flight runs | `--all` (cross-project), `--limit` |
 | `cde history` | Table of recent runs in this project | `--json`, `--tag`, `--status`, `--since 7d`, `--all`, `--project`, `--limit`; positional `<run_id>` for one row |
+| `cde prune` | Delete failed/evicted rows from history | dry-run by default; `--apply` to delete. Default safety: keeps tagged, annotated, and `<7d` runs. `--include-tagged`/`--include-annotated`/`--keep-recent 0d`/`--include-running` to relax. `--all` for cross-project. |
 | `cde annotate <id>` | Replace notes (uses $EDITOR if no `-m`) | `-m "..."` or pipe via stdin |
 | `cde hypothesize <id>` | Replace hypothesis | `-m "..."` |
 | `cde tag <id> <name>` / `cde untag <id> <name>` | Add/remove tags | — |

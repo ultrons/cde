@@ -34,6 +34,7 @@ _COMMANDS = [
     "sync",
     "server",
     "history",
+    "prune",
     "annotate",   # registers annotate / hypothesize / tag / untag
     "compare",
     "lineage",

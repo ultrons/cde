@@ -308,3 +308,19 @@ def set_status(
   if finished:
     fields["ts_finished"] = _NOW()
   update_run(conn, run_id, submitter=submitter, **fields)
+
+
+def delete_run(
+    conn: sqlite3.Connection, run_id: str, *, submitter: str = ""
+) -> bool:
+  """Delete a single run row. Returns True iff a row was actually removed.
+
+  No cascade: the row's `parent_run` references survive on any descendants
+  (cde lineage truncates gracefully when it can't resolve a parent_run).
+  """
+  cur = conn.execute(
+      "DELETE FROM runs WHERE submitter=? AND run_id=?",
+      (submitter, run_id),
+  )
+  conn.commit()
+  return cur.rowcount > 0
