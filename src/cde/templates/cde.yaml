@@ -16,6 +16,14 @@ image:
   name: REPLACE-ME                         # final tag is auto: <name>:cde-<sha7>
   dockerfile: ./Dockerfile
   context: .
+  # Optional crane-append fast-path. When `base_image` is set, `cde build`
+  # skips docker build entirely and uses `crane mutate --append` to layer
+  # the local source onto a pre-built base image. ~1-2s per build, no
+  # Docker daemon required. Equivalent to xpk's --base-docker-image +
+  # --script-dir. Requires the `crane` binary on PATH (install:
+  # https://github.com/google/go-containerregistry/tree/main/cmd/crane).
+  # base_image: gcr.io/your-proj/your-base:v1
+  # workdir: /app                            # where source lands in the image
 
 # Path to the Jinja2 JobSet template, relative to project root.
 template: ./manifests/jobset.yaml.j2

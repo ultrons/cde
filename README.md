@@ -32,6 +32,10 @@ production submission tool with cluster lifecycle (use
 [xpk](https://github.com/AI-Hypercomputer/xpk) for that), or you need
 recipe-sharing across users (cdk fits).
 
+**For existing xpk users:** see [docs/from-xpk.md](docs/from-xpk.md) for the
+flag/concept mapping and a worked migration via `cde init --from-yaml`. cde
+and xpk are complementary — use xpk for cluster ops, cde for the inner loop.
+
 ## Status
 
 Active development. **Phase 0–4 shipped**: init, build, run, logs,

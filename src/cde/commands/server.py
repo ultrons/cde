@@ -24,7 +24,7 @@ from typing import Any
 
 from cde import (
     config,
-    context_hash,
+    crane,
     db,
     git_info,
     k8s,
@@ -141,10 +141,7 @@ def _up(args: argparse.Namespace) -> int:
     log.err("server template not found: %s", template_path)
     return 1
 
-  ctx_dir = (project_root / cfg.image.context).resolve()
-  dockerfile = (project_root / cfg.image.dockerfile).resolve()
-  sha7 = context_hash.context_hash(ctx_dir, dockerfile=dockerfile)
-  image_tag = f"{cfg.image.repo_path}:cde-{sha7}"
+  image_tag = crane.expected_tag(cfg.image, project_root)
 
   set_overrides = _parse_set(args.set)
   value_class = args.value_class or cfg.defaults.value_class

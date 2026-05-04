@@ -31,6 +31,15 @@ class ImageConfig:
   dockerfile: str = "./Dockerfile"
   context: str = "."
 
+  # Crane-append fast-path: when `base_image` is set, `cde build` skips
+  # `docker build` entirely and uses `crane mutate --append` to layer the
+  # local source onto a pre-built base image (xpk's --base-docker-image +
+  # --script-dir pattern). Faster (~1-2s) and works without a Docker
+  # daemon. The local context tar is extracted at `workdir` inside the
+  # resulting image.
+  base_image: str | None = None    # e.g. gcr.io/myproj/jax-tpu-base:v1
+  workdir: str = "/app"            # where the source lands in the image
+
   @property
   def repo_path(self) -> str:
     """Full image path without the tag, e.g. gcr.io/.../jaxgpt-tpu."""
@@ -151,6 +160,8 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
       name=_require(image_raw, "name", source + ":image"),
       dockerfile=image_raw.get("dockerfile", "./Dockerfile"),
       context=image_raw.get("context", "."),
+      base_image=image_raw.get("base_image") or None,
+      workdir=image_raw.get("workdir", "/app"),
   )
 
   # template

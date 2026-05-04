@@ -23,7 +23,7 @@ from typing import Any
 
 from cde import (
     config,
-    context_hash,
+    crane,
     db,
     git_info,
     k8s,
@@ -284,10 +284,8 @@ def run(args: argparse.Namespace) -> int:
   # Compute image tag from current build context. This must match what
   # `cde build` produced. Identical context → identical tag → user
   # presumed to have run cde build already (we don't auto-build in v0).
-  ctx_dir = (project_root / cfg.image.context).resolve()
-  dockerfile = (project_root / cfg.image.dockerfile).resolve()
-  sha7 = context_hash.context_hash(ctx_dir, dockerfile=dockerfile)
-  image_tag = f"{cfg.image.repo_path}:cde-{sha7}"
+  # Dispatches docker-build vs crane-append based on cfg.image.base_image.
+  image_tag = crane.expected_tag(cfg.image, project_root)
 
   # Build the substitution context for the template.
   # Override layering, lowest precedence to highest:
