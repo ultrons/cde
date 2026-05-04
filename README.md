@@ -1,5 +1,8 @@
 # cde — TPU/GPU iteration manager
 
+[![test](https://github.com/ultrons/cde/actions/workflows/test.yml/badge.svg)](https://github.com/ultrons/cde/actions/workflows/test.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
+
 A small CLI that owns the iteration loop for ML workloads on Kubernetes
 (TPU/GPU). Replaces the typical sprawl of one-off YAML files + manual
 `docker build` + scratch-markdown notes with explicit verbs and a
