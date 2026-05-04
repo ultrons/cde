@@ -18,7 +18,18 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest >= 7.0",
+    "mypy >= 1.5",
+    "types-PyYAML",
 ]
+
+[tool.mypy]
+files = ["src/cde"]
+python_version = "3.10"
+# Default strictness — we're not running --strict because the codebase
+# isn't fully annotated yet (parser-setup style, dataclass kwargs without
+# annotations, etc.). Tighten over time.
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [project.scripts]
 cde = "cde.cli:main"

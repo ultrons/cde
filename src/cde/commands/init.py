@@ -135,14 +135,17 @@ def _split_image(image: str | None) -> tuple[str, str, str | None]:
   Falls back to ('REPLACE-ME', <best guess>, None) on any unparseable form."""
   if not image:
     return "REPLACE-ME", "REPLACE-ME", None
-  base, _, tag = image.rpartition(":")
-  if not base:
+  tag: str | None
+  if ":" in image:
+    base, _, tag_part = image.rpartition(":")
+    tag = tag_part or None
+  else:
     base, tag = image, None
   if "/" in base:
     registry, _, name = base.rpartition("/")
   else:
     registry, name = "REPLACE-ME", base
-  return registry or "REPLACE-ME", name or "REPLACE-ME", tag or None
+  return registry or "REPLACE-ME", name or "REPLACE-ME", tag
 
 
 def _from_yaml_scaffold(

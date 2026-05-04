@@ -62,7 +62,11 @@ class _DebouncedHandler(FileSystemEventHandler):
       return
     if event.event_type not in ("created", "modified", "moved"):
       return
-    p = Path(event.src_path)
+    # watchdog types src_path as bytes | str depending on the platform.
+    src_path = event.src_path
+    if isinstance(src_path, bytes):
+      src_path = src_path.decode()
+    p = Path(src_path)
     s = str(p)
     if any(sub in s for sub in self._ignore):
       return

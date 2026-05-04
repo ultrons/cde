@@ -116,8 +116,9 @@ def run(args: argparse.Namespace) -> int:
   if not r.k8s_namespace:
     log.err("run %s has no k8s_namespace recorded", r.run_id)
     return 1
+  namespace: str = r.k8s_namespace  # narrow for the closure below
 
-  pod = _find_pod(r.k8s_namespace, r.run_id)
+  pod = _find_pod(namespace, r.run_id)
   if pod is None:
     log.err(
         "no pod found for run %s in %s — is the JobSet still running?",
@@ -158,7 +159,7 @@ def run(args: argparse.Namespace) -> int:
       in_pod = _resolve_dest(local)
       if in_pod is None:
         continue
-      rc = _kubectl_cp(local, r.k8s_namespace, pod, in_pod)
+      rc = _kubectl_cp(local, namespace, pod, in_pod)
       if rc == 0:
         nsync += 1
         log.ok("synced %s", local.name)
