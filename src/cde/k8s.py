@@ -101,6 +101,34 @@ def apply(
   return proc.stdout.strip()
 
 
+def delete_jobset(
+    namespace: str,
+    name: str,
+    *,
+    context: str | None = None,
+    ignore_not_found: bool = True,
+) -> bool:
+  """Run `kubectl delete jobset <name> -n <namespace>`.
+
+  Returns True if the JobSet was deleted, False if `ignore_not_found` and
+  the resource was already gone. Raises KubectlError on other failures.
+  Deleting the JobSet cascades to its Jobs/Pods; Kueue garbage-collects
+  the corresponding Workload object."""
+  args = _kctl(context) + ["-n", namespace, "delete", "jobset", name]
+  if ignore_not_found:
+    args.append("--ignore-not-found")
+  log.detail("$ %s", " ".join(args))
+  proc = subprocess.run(args, capture_output=True, text=True, check=False)
+  if proc.returncode != 0:
+    raise KubectlError(
+        f"kubectl delete jobset failed (exit {proc.returncode}):\n"
+        f"{proc.stderr.strip()}"
+    )
+  # With --ignore-not-found, kubectl prints "" when the resource is gone
+  # and "jobset.jobset.x-k8s.io/<name> deleted" when it actually deleted.
+  return bool(proc.stdout.strip())
+
+
 # ---------------------------------------------------------------------------
 # JobSet status
 # ---------------------------------------------------------------------------

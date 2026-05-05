@@ -34,7 +34,7 @@ def test_help_lists_all_verbs():
   for verb in (
       "init", "build", "run", "logs", "shell", "reap",
       "watch", "sync", "server",
-      "history", "prune", "annotate", "hypothesize", "tag", "untag",
+      "history", "prune", "delete", "annotate", "hypothesize", "tag", "untag",
       "compare", "lineage", "defaults", "profile", "status",
   ):
     assert verb in result.stdout, f"verb {verb!r} missing from --help"

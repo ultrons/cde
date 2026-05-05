@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+
 from cde import k8s
 
 
@@ -139,3 +141,39 @@ def test_replicated_jobs_status_returns_empty_when_no_status_yet():
       return_value=_FakeProc(0, json.dumps(obj)),
   ):
     assert k8s.get_replicated_jobs_status("ns", "fresh") == []
+
+
+# ---------- delete_jobset ----------
+
+
+def test_delete_jobset_returns_true_when_kubectl_deleted():
+  with patch(
+      "cde.k8s.subprocess.run",
+      return_value=_FakeProc(
+          0, "jobset.jobset.x-k8s.io/foo deleted\n",
+      ),
+  ) as mock_run:
+    out = k8s.delete_jobset("poc-dev", "foo", context="ctx")
+  assert out is True
+  args = mock_run.call_args[0][0]
+  assert "--context=ctx" in args
+  assert "delete" in args and "jobset" in args
+  assert "--ignore-not-found" in args
+
+
+def test_delete_jobset_returns_false_when_already_gone():
+  # With --ignore-not-found, kubectl exits 0 with empty stdout.
+  with patch(
+      "cde.k8s.subprocess.run",
+      return_value=_FakeProc(0, "", ""),
+  ):
+    assert k8s.delete_jobset("ns", "gone") is False
+
+
+def test_delete_jobset_raises_on_other_failures():
+  with patch(
+      "cde.k8s.subprocess.run",
+      return_value=_FakeProc(1, "", "Error: forbidden"),
+  ):
+    with pytest.raises(k8s.KubectlError, match="forbidden"):
+      k8s.delete_jobset("ns", "x")

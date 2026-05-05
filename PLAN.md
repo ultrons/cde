@@ -269,8 +269,12 @@ cde logs <run> [-r <name>]      # tail the JobSet's pods; -r selects a named
                                 # replicatedJob for Pathways
 cde shell                       # k9s shortcut filtered to current namespace
 cde sync on/off                 # toggle sync mode for the current run
-cde prune                       # delete failed/evicted runs (keep-tagged,
-                                # keep-annotated, keep-recent 7d by default)
+cde prune                       # delete failed/evicted runs from local
+                                # history (keep-tagged, keep-annotated,
+                                # keep-recent 7d by default)
+cde delete <run> [--purge]      # kubectl delete the on-cluster JobSet
+                                # routed via the run's recorded context;
+                                # --purge also drops the history row
 cde quota                       # show team-quota status (read team-quota ConfigMap)
 cde server up/down/reload/wait-ready
                                 # inference lifecycle
