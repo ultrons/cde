@@ -40,7 +40,7 @@ LLM tokens.
   code; verify the DoD passes after.
 - **Add a test.** Every fix gets a regression test in `tests/` so it
   doesn't ship again.
-- **Don't break existing flows.** `pytest -q` and `python -m mypy src/cde/`
+- **Don't break existing flows.** `pytest -q` and `python -m mypy`
   are both CI gates — both must pass before push.
 - **Comment + close, don't silently push.** When you close an issue, leave
   a comment with: PR number, commit SHA(s), the test you added, and the
@@ -68,7 +68,7 @@ Each iteration:
 
 5. **Fix.** Edit cde source. Single commit per fix.
 
-6. **Test.** `pytest -q` AND `python -m mypy src/cde/`. Both must pass.
+6. **Test.** `pytest -q` AND `python -m mypy`. Both must pass.
    Add a regression test under `tests/`.
 
 7. **Commit.** Commit-message style: match the existing repo log
@@ -84,8 +84,11 @@ Each iteration:
    ```
    Don't impose `fix(<scope>):` conventional-commits — repo doesn't use it.
 
-8. **Open PR + wait for CI.** This repo has CI (`.github/workflows/ci.yml`
-   runs pytest + mypy on push/PR). Direct main push bypasses CI. Always:
+8. **Open PR + wait for CI.** This repo has CI
+   (`.github/workflows/test.yml` runs pytest + mypy on both push AND
+   pull_request). PR-flow GATES merge on CI green — direct main push
+   doesn't bypass CI, but it lets CI tell you you broke `main` rather
+   than blocking the bad change before it lands. Always use PR-flow:
    ```bash
    git checkout -b fix-issue-<N>
    git push -u origin fix-issue-<N>
@@ -172,7 +175,7 @@ Per session end (no more open blockers):
 | `tests/` | pytest tests; CI runs `pytest -q` |
 | `~/.cde/history.sqlite` | per-user run history (respects `$CDE_HOME`) |
 | `~/.cde/recent.yaml` | recent flag-default cache |
-| `.github/workflows/ci.yml` | pytest + mypy on push/PR |
+| `.github/workflows/test.yml` | pytest + mypy on both push AND PR |
 | `pyproject.toml` | install: `pip install -e .` |
 
 Subcommands (canonical list, no duplicates):
