@@ -197,3 +197,31 @@ def test_flag_renders_as_bare_flag(project):
   assert "--ep=32" in args_str
   # --no-flag must NOT emit a key=value or a bare flag
   assert "use_v2_block_manager" not in args_str
+
+
+def test_run_deletes_history_row_on_failed_apply(project):
+  # Regression for #5: a failed `kubectl apply` must NOT leave a row in
+  # history.sqlite. Previously, every transient apply failure (bogus context,
+  # webhook rejection, API timeout) forced the user to `cde delete --purge
+  # --force <tag>` before they could retry with the same --tag — exactly the
+  # iteration-loop friction Susan reported in #4.
+  #
+  # We trigger the failure with a deliberately bogus --context: kubectl will
+  # exit non-zero with "context ... does not exist", which becomes a
+  # KubectlError the apply branch catches. The row inserted just before the
+  # apply must be deleted, not just status-updated to "failed".
+  result = _cde(
+      "run", "--tag", "v_apply_fail",
+      "--context", "bogus-context-does-not-exist",
+  )
+  assert result.returncode != 0
+  hist_db = Path(os.environ["CDE_HOME"]).expanduser() / "history.sqlite"
+  if not hist_db.exists():
+    return  # nothing to check; row certainly absent
+  import sqlite3
+  rows = sqlite3.connect(hist_db).execute(
+      "SELECT run_id, status FROM runs WHERE run_id=?", ("v_apply_fail",),
+  ).fetchall()
+  assert rows == [], (
+      f"row from failed apply should have been deleted; still in DB: {rows}"
+  )
