@@ -48,15 +48,26 @@ spec:
         template:
           metadata:
             annotations:
-              # Kueue topology-aware scheduling. Required when the cluster's
-              # ResourceFlavor sets spec.topologyName (common on TPU clusters).
-              # Without these annotations, the Workload sits forever with
-              # QuotaReserved=False, reason=Pending, message='couldn't assign
-              # flavors to pod set ...: Flavor "..." supports only
-              # TopologyAwareScheduling'. Value is the node label that
-              # identifies a topology unit; on GKE TPU that is the slice.
+              # Kueue topology-aware scheduling annotations. Required when the
+              # cluster's ResourceFlavor sets spec.topologyName. Without them,
+              # the Workload sits forever with QuotaReserved=False, reason=Pending,
+              # message='Flavor "..." supports only TopologyAwareScheduling'.
+              #
+              # The VALUES below are cluster-specific and almost certainly
+              # need to be edited for your cluster. Run:
+              #
+              #   kubectl get topology -o yaml
+              #
+              # to see the levels your cluster's Topology object defines, then
+              # use one of those level labels here. The two annotations name
+              # different scopes — `podset-required-topology` is the broader
+              # gang scope (e.g. a datacenter block), `podset-slice-required-
+              # topology` is the slice/partition scope. They typically differ.
+              # Example from a working sibling JobSet on a TPU cluster:
+              #   kueue.x-k8s.io/podset-required-topology: cloud.google.com/gce-topology-block
+              #   kueue.x-k8s.io/podset-slice-required-topology: cloud.google.com/gke-tpu-partition-4x4x4-id
               # If your cluster's flavor has no topologyName, you can delete
-              # these two lines safely.
+              # this annotations block entirely.
               kueue.x-k8s.io/podset-required-topology: cloud.google.com/gke-tpu-topology
               kueue.x-k8s.io/podset-slice-required-topology: cloud.google.com/gke-tpu-topology
             labels:
