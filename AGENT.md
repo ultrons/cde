@@ -114,6 +114,24 @@ Each iteration:
 
 ---
 
+## 2b. Branch policy — you vs autoperf
+
+You use **PR-flow to `main` with CI gating** (branch + push branch + open
+PR + wait for CI green + squash-merge). That's the right convention for
+a tool repo where merged code ships to downstream consumers (jax-gpt's
+autoperf agent runs your `cde` CLI directly).
+
+The autoperf agent in `~/jax-gpt/` uses a **different convention**:
+frequent push to per-workload branches (`autoperf/<workload>`), no PR,
+direct commits. Their commits are experimental records, not shipped
+infrastructure — different ergonomics for different jobs.
+
+**Don't adopt autoperf's branching pattern.** Keep PR-flow. Buggy
+direct-push to `main` here would break every downstream consumer
+immediately.
+
+---
+
 ## 3. Constraints
 
 - **Don't modify other repos.** If a fix requires changes outside cde, leave
