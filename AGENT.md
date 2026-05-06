@@ -84,51 +84,60 @@ Each iteration:
    ```
    Don't impose `fix(<scope>):` conventional-commits — repo doesn't use it.
 
-8. **Open PR + wait for CI.** This repo has CI
+8. **Push to your session branch.** This repo has CI
    (`.github/workflows/test.yml` runs pytest + mypy on both push AND
-   pull_request). PR-flow GATES merge on CI green — direct main push
-   doesn't bypass CI, but it lets CI tell you you broke `main` rather
-   than blocking the bad change before it lands. Always use PR-flow:
+   pull_request). On the FIRST fix of this session, create the branch:
    ```bash
-   git checkout -b fix-issue-<N>
-   git push -u origin fix-issue-<N>
-   gh pr create --title "<title>" --body "Closes ultrons/cde#<N>. <body>"
-   gh pr checks --watch    # wait for CI green
-   gh pr merge --squash --delete-branch
+   git checkout -b cde-agent/session-$(date -u +%Y-%m-%d-%H%M)
+   git push -u origin cde-agent/session-$(date -u +%Y-%m-%d-%H%M)
    ```
+   On subsequent fixes in the same session: just `git push` (already
+   tracking).
 
-9. **Close issue with resolution comment.**
+9. **Comment on the issue (don't close).** The issue stays OPEN until a
+   human merges your session PR (which auto-closes it via the `Closes`
+   syntax in the PR body). Comment to surface progress:
    ```bash
-   gh issue close <N> --repo ultrons/cde --comment "$(cat <<'EOF'
-   Fixed in PR #<PR>, merged as <SHA> to main.
+   gh issue comment <N> --repo ultrons/cde --body "$(cat <<'EOF'
+   Proposed fix on branch `cde-agent/session-...` (commit `<SHA>`).
+   Will be included in the session PR opened at end-of-session.
 
    - **Test added**: <path/to/test>
    - **Repro now passes**: <paste verified output>
    - **DoD verified**: <yes/no — explain if no>
-   - **CI status**: green (pytest + mypy)
+   - **CI status**: green on push (pytest + mypy)
    EOF
    )"
    ```
 
-10. **Loop to step 1.**
+10. **Loop to step 1.** Continue picking up open blockers until queue is
+    empty (or 3 empty polls in `/loop` mode).
 
 ---
 
-## 2b. Branch policy — you vs autoperf
+## 2b. Branch policy — humans gate all merges to `main`
 
-You use **PR-flow to `main` with CI gating** (branch + push branch + open
-PR + wait for CI green + squash-merge). That's the right convention for
-a tool repo where merged code ships to downstream consumers (jax-gpt's
-autoperf agent runs your `cde` CLI directly).
+You use a **per-session branch with no auto-merge**. Same shape as the
+autoperf agent in `~/jax-gpt/`: push commits to a dedicated branch as
+you go, open a PR at session end, and **STOP**. Humans review and merge.
+Never `gh pr merge` yourself; never push to `main` directly.
 
-The autoperf agent in `~/jax-gpt/` uses a **different convention**:
-frequent push to per-workload branches (`autoperf/<workload>`), no PR,
-direct commits. Their commits are experimental records, not shipped
-infrastructure — different ergonomics for different jobs.
+Why: autoperf and other downstream consumers (perfsim, jax-gpt's image)
+read your `main` branch directly. A buggy auto-merge would corrupt every
+consumer immediately. Human review on every merge is the safety
+boundary.
 
-**Don't adopt autoperf's branching pattern.** Keep PR-flow. Buggy
-direct-push to `main` here would break every downstream consumer
-immediately.
+Your branch convention:
+- Branch name: `cde-agent/session-$(date -u +%Y-%m-%d-%H%M)` for the
+  session, OR `cde-agent/issue-<N>` for single-fix sessions
+- Push commits as you produce them (frequent pushes = durable audit
+  trail)
+- At session end, open ONE PR for the branch with body listing all
+  fixed issues using `Closes ultrons/cde#<N>` syntax (GitHub auto-closes
+  the issues when human merges the PR)
+- The issue stays OPEN on GitHub until the human merges. autoperf
+  detects close → pulls `main` → retries. Don't close the issue
+  yourself with `gh issue close`.
 
 ---
 
@@ -172,14 +181,35 @@ don't drift to a different issue while waiting.
 ## 5. Output convention
 
 Per fix:
-- one PR (squash-merged to main with CI green)
-- one closing comment on the issue (template in §2 step 9)
+- one commit + push on your session branch (`cde-agent/session-...`)
+- one progress-comment on the GitHub issue (template in §2 step 9) —
+  do NOT close the issue
 - one new/updated test in `tests/`
 
-Per session end (no more open blockers):
-- `~/.cde/agent-status/<YYYY-MM-DD>.md` (out of repo, doesn't clutter git
-  history) with: date, issues fixed (#s + PRs), issues left open (#s +
-  reason), test pass count, mypy pass
+Per session end (queue empty, or 3 empty polls):
+
+1. **Open the session PR** with body listing every fixed issue:
+   ```bash
+   gh pr create --base main --head cde-agent/session-... \
+     --title "cde-agent session $(date -u +%Y-%m-%d): <N> fixes" \
+     --body "$(cat <<'EOF'
+   Session fixes:
+   - Closes ultrons/cde#<N1>: <one-line>
+   - Closes ultrons/cde#<N2>: <one-line>
+   - ...
+
+   All commits CI-green on push. Awaiting human review + merge.
+   On merge, the `Closes` lines auto-close all listed issues.
+   EOF
+   )"
+   ```
+   **Don't `gh pr merge`.** Humans gate the merge to `main`.
+
+2. **Write the status file** (out of repo):
+   - `~/.cde/agent-status/<YYYY-MM-DD>.md`
+   - Contents: date, session PR #, issues fixed (#s) listed in PR body,
+     issues left open (#s + reason — needs-info, etc), test pass count,
+     mypy pass
 
 ---
 
