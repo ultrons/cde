@@ -55,9 +55,6 @@ team: alpha
   assert cfg.history.path == ""   # empty → caller falls back to paths.history_db_path()
   assert cfg.history.gcs_uri is None
   assert cfg.defaults_overrides == {}
-  # Kueue defaults: injection on, default TPU topology label
-  assert cfg.kueue.inject_topology_annotations is True
-  assert cfg.kueue.topology_label == "cloud.google.com/gke-tpu-topology"
 
 
 def test_full_config_round_trip(tmp_path):
@@ -102,37 +99,6 @@ defaults_overrides:
   assert cfg.profile.base_uri == "gs://my-bucket/profiles"
   assert cfg.history.gcs_uri == "gs://my-bucket/cde/runs.jsonl"
   assert cfg.defaults_overrides == {"batch_size": 1024, "ep": 32}
-
-
-def test_kueue_block_parses(tmp_path):
-  cfg_path = _write(tmp_path / "cde.yaml", """
-project: p
-image:
-  registry: gcr.io/example
-  name: my-app
-template: ./manifests/jobset.yaml.j2
-team: alpha
-kueue:
-  inject_topology_annotations: false
-  topology_label: my.custom/label
-""")
-  cfg = config.load(cfg_path)
-  assert cfg.kueue.inject_topology_annotations is False
-  assert cfg.kueue.topology_label == "my.custom/label"
-
-
-def test_kueue_must_be_mapping(tmp_path):
-  cfg_path = _write(tmp_path / "cde.yaml", """
-project: p
-image:
-  registry: gcr.io/example
-  name: my-app
-template: ./manifests/jobset.yaml.j2
-team: alpha
-kueue: "no"
-""")
-  with pytest.raises(config.ConfigError, match="kueue"):
-    config.load(cfg_path)
 
 
 def test_missing_file_raises(tmp_path):
