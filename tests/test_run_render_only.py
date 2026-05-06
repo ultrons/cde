@@ -177,6 +177,76 @@ def test_namespace_priority_class_filtered_from_overrides(project):
   assert "priority_class=" not in args_str
 
 
+def _strip_tas_from_template(project: Path) -> None:
+  """Edit the project's scaffolded template to remove the TAS pod-template
+  annotations — simulates an existing project that pre-dates Commit 3 of the
+  scaffold-fix PR."""
+  tpl_path = project / "manifests" / "jobset.yaml.j2"
+  text = tpl_path.read_text()
+  out_lines: list[str] = []
+  skip_block = False
+  for line in text.splitlines(keepends=True):
+    stripped = line.strip()
+    if "annotations:" in stripped and not skip_block:
+      skip_block = True
+      continue
+    if skip_block:
+      # Stop skipping when we hit the next sibling key (labels:) at lower
+      # indentation depth than the annotations block content.
+      if stripped.startswith("labels:"):
+        skip_block = False
+        out_lines.append(line)
+        continue
+      # Lines inside the annotations block (kueue.* keys, comments) — drop.
+      continue
+    out_lines.append(line)
+  tpl_path.write_text("".join(out_lines))
+
+
+def test_run_auto_injects_tas_annotations_when_template_lacks_them(project):
+  # An existing project whose scaffolded template predates the TAS-annotations
+  # change should still produce a working manifest — cde injects at render
+  # time. This covers your colleague's `sb-1` case directly.
+  _strip_tas_from_template(project)
+
+  result = _cde("run", "--tag", "v100", "--render-only")
+  assert result.returncode == 0, result.stderr
+  doc = yaml.safe_load(result.stdout)
+  pt_anns = (
+      doc["spec"]["replicatedJobs"][0]["template"]["spec"]
+      ["template"]["metadata"]["annotations"]
+  )
+  assert pt_anns["kueue.x-k8s.io/podset-required-topology"] == (
+      "cloud.google.com/gke-tpu-topology"
+  )
+  assert pt_anns["kueue.x-k8s.io/podset-slice-required-topology"] == (
+      "cloud.google.com/gke-tpu-topology"
+  )
+  # The warn message goes to stderr — visible to the user.
+  assert "auto-injected Kueue TAS annotations" in result.stderr
+
+
+def test_run_skips_injection_when_disabled_in_cde_yaml(project):
+  _strip_tas_from_template(project)
+  cfg_path = project / "cde.yaml"
+  cfg_path.write_text(
+      cfg_path.read_text() +
+      "\nkueue:\n  inject_topology_annotations: false\n",
+  )
+  result = _cde("run", "--tag", "v101", "--render-only")
+  assert result.returncode == 0, result.stderr
+  doc = yaml.safe_load(result.stdout)
+  pt_md = (
+      doc["spec"]["replicatedJobs"][0]["template"]["spec"]
+      ["template"]["metadata"]
+  )
+  # No injection happened — the user opted out.
+  assert "annotations" not in pt_md or (
+      "kueue.x-k8s.io/podset-required-topology" not in
+      (pt_md.get("annotations") or {})
+  )
+
+
 def test_flag_renders_as_bare_flag(project):
   result = _cde(
       "run", "--tag", "v006", "--render-only",

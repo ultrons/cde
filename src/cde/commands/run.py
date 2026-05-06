@@ -41,6 +41,7 @@ from cde import (
     git_info,
     k8s,
     logging as log,
+    manifest_inject,
     paths,
     recent,
     templating,
@@ -346,6 +347,25 @@ def run(args: argparse.Namespace) -> int:
 
   log.step("rendering %s", template_path.relative_to(project_root))
   manifest = templating.render(template_path, template_ctx)
+
+  # Auto-inject Kueue TAS pod-template annotations on any replicatedJob that
+  # lacks them. The TAS annotation is a cluster-side admission gate, not a
+  # user preference; clusters whose ResourceFlavor has spec.topologyName set
+  # will silently reject any JobSet that doesn't declare one. Kueue ignores
+  # the annotation when the assigned flavor has no topologyName, so default-
+  # on is safe. Opt out via cde.yaml: `kueue.inject_topology_annotations: false`.
+  # Byte-identical no-op when every replicatedJob already has the keys.
+  if cfg.kueue.inject_topology_annotations:
+    manifest, mutated = manifest_inject.maybe_inject_tas_annotations(
+        manifest, topology_label=cfg.kueue.topology_label,
+    )
+    if mutated:
+      log.warn(
+          "auto-injected Kueue TAS annotations on replicatedJob(s): %s "
+          "(label=%s). Disable via `kueue.inject_topology_annotations: false` "
+          "in cde.yaml.",
+          ", ".join(mutated), cfg.kueue.topology_label,
+      )
 
   if args.render_only:
     sys.stdout.write(manifest)

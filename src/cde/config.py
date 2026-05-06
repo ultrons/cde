@@ -102,6 +102,23 @@ class ServerConfig:
 
 
 @dataclass
+class KueueConfig:
+  """cde-side behavior toggles for Kueue interaction.
+
+  These are *not* template variables — they configure cde itself. Default
+  injection of `kueue.x-k8s.io/podset-(slice-)?required-topology` annotations
+  on rendered JobSet pod templates is on by default because the silent-
+  permanent-suspension failure mode (cluster's ResourceFlavor has
+  topologyName set but the rendered manifest declares no topology request) is
+  the worst possible failure mode. Kueue ignores the annotation when the
+  assigned flavor has no topologyName, so default-on is safe.
+  """
+
+  inject_topology_annotations: bool = True
+  topology_label: str = "cloud.google.com/gke-tpu-topology"
+
+
+@dataclass
 class CdeConfig:
   """The parsed shape of cde.yaml.
 
@@ -119,6 +136,7 @@ class CdeConfig:
   profile: ProfileConfig | None = None
   history: HistoryConfig = field(default_factory=HistoryConfig)
   server: ServerConfig | None = None
+  kueue: KueueConfig = field(default_factory=KueueConfig)
   defaults_overrides: dict[str, Any] = field(default_factory=dict)
 
 
@@ -249,6 +267,22 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
   if not isinstance(overrides, dict):
     raise ConfigError(f"{source}: `defaults_overrides` must be a mapping")
 
+  # kueue — cde-side behavior toggles, optional
+  kueue_raw = raw.get("kueue")
+  if kueue_raw is None:
+    kueue = KueueConfig()
+  else:
+    if not isinstance(kueue_raw, dict):
+      raise ConfigError(f"{source}: `kueue` must be a mapping")
+    kueue = KueueConfig(
+        inject_topology_annotations=bool(
+            kueue_raw.get("inject_topology_annotations", True)
+        ),
+        topology_label=str(
+            kueue_raw.get("topology_label", "cloud.google.com/gke-tpu-topology")
+        ),
+    )
+
   return CdeConfig(
       project=project,
       image=image,
@@ -259,5 +293,6 @@ def _from_dict(raw: dict[str, Any], *, source: str) -> CdeConfig:
       profile=profile,
       history=history,
       server=server,
+      kueue=kueue,
       defaults_overrides=overrides,
   )
