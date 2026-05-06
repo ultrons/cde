@@ -33,6 +33,7 @@ STATUS_OK = "ok"
 STATUS_FAILED = "failed"
 STATUS_RUNNING = "running"
 STATUS_SUBMITTED = "submitted"
+STATUS_PENDING = "pending"  # JobSet exists but is suspended (Kueue not yet admitted)
 
 
 class KubectlError(RuntimeError):
@@ -191,6 +192,26 @@ def classify_jobset(obj: dict) -> JobSetStatus:
       return JobSetStatus(
           status=STATUS_FAILED,
           reason=cond.get("reason"),
+          message=cond.get("message"),
+          raw_phase=raw_phase,
+      )
+
+  # Suspended (Kueue hasn't admitted the Workload yet, or the user explicitly
+  # paused). Authoritative signal is `spec.suspend` — that's the field Kueue
+  # toggles. The `Suspended` status condition is a controller-side mirror that
+  # may lag or be missing on older JobSet controllers, so use it as fallback.
+  if (obj.get("spec") or {}).get("suspend") is True:
+    return JobSetStatus(
+        status=STATUS_PENDING,
+        reason="Suspended",
+        message="JobSet is suspended (awaiting Kueue admission or paused).",
+        raw_phase=raw_phase,
+    )
+  for cond in conditions:
+    if (cond.get("type") or "").lower() == "suspended" and cond.get("status") == "True":
+      return JobSetStatus(
+          status=STATUS_PENDING,
+          reason=cond.get("reason") or "Suspended",
           message=cond.get("message"),
           raw_phase=raw_phase,
       )
