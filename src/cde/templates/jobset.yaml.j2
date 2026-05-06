@@ -47,6 +47,18 @@ spec:
         backoffLimit: 0
         template:
           metadata:
+            annotations:
+              # Kueue topology-aware scheduling. Required when the cluster's
+              # ResourceFlavor sets spec.topologyName (common on TPU clusters).
+              # Without these annotations, the Workload sits forever with
+              # QuotaReserved=False, reason=Pending, message='couldn't assign
+              # flavors to pod set ...: Flavor "..." supports only
+              # TopologyAwareScheduling'. Value is the node label that
+              # identifies a topology unit; on GKE TPU that is the slice.
+              # If your cluster's flavor has no topologyName, you can delete
+              # these two lines safely.
+              kueue.x-k8s.io/podset-required-topology: cloud.google.com/gke-tpu-topology
+              kueue.x-k8s.io/podset-slice-required-topology: cloud.google.com/gke-tpu-topology
             labels:
               # Kueue propagates pod-template labels onto the Workload object;
               # declared-duration-minutes MUST appear here for the time-limit

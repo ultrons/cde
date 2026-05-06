@@ -89,6 +89,21 @@ def test_render_only_produces_valid_yaml(project):
   assert pt_labels["declared-duration-minutes"] == "60"
   assert pt_labels["cde.io/run-id"] == "v001"
 
+  # Kueue topology-aware-scheduling annotations on the pod template. Without
+  # these, JobSets on a TAS-required ResourceFlavor sit forever with
+  # QuotaReserved=False. The scaffold ships them so users get a working
+  # default; users can delete them if their cluster doesn't need TAS.
+  pt_annotations = (
+      doc["spec"]["replicatedJobs"][0]["template"]["spec"]
+      ["template"]["metadata"]["annotations"]
+  )
+  assert pt_annotations["kueue.x-k8s.io/podset-required-topology"] == (
+      "cloud.google.com/gke-tpu-topology"
+  )
+  assert pt_annotations["kueue.x-k8s.io/podset-slice-required-topology"] == (
+      "cloud.google.com/gke-tpu-topology"
+  )
+
 
 def test_overrides_from_set_appear_in_args(project):
   result = _cde(

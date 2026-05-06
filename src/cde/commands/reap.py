@@ -85,7 +85,7 @@ def run(args: argparse.Namespace) -> int:
   with db.open_db(_resolve_db_path()) as conn:
     in_flight = [
         r for r in db.list_runs(conn, project=project, limit=args.limit)
-        if r.status in (k8s.STATUS_SUBMITTED, k8s.STATUS_RUNNING)
+        if r.status in (k8s.STATUS_SUBMITTED, k8s.STATUS_RUNNING, k8s.STATUS_PENDING)
     ]
 
   if not in_flight:

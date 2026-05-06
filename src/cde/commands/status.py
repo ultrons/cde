@@ -149,13 +149,24 @@ def _render_text(d: dict) -> None:
         wl["name"], wl["admitted"], wl["queueName"],
     )
     for c in wl.get("conditions", []):
-      if c.get("status") == "True" or c.get("type") in ("PodsReady", "Admitted"):
-        line = f"          {c.get('type')}={c.get('status')}"
-        if c.get("reason"):
-          line += f" ({c['reason']})"
-        if c.get("message"):
-          line += f" — {c['message']}"
-        log.detail("%s", line)
+      # Show: any True condition; the well-known PodsReady/Admitted gates
+      # regardless; AND any other non-True condition that carries a reason or
+      # message — that's where blockers like
+      #   QuotaReserved=False (Pending) — couldn't assign flavors to pod set
+      #   worker: Flavor "super-slice-rf" supports only TopologyAwareScheduling
+      # surface. The previous filter dropped exactly that line, leaving users
+      # unable to see why admission was stuck.
+      meaningful = c.get("status") == "True"
+      meaningful = meaningful or c.get("type") in ("PodsReady", "Admitted")
+      meaningful = meaningful or bool(c.get("reason") or c.get("message"))
+      if not meaningful:
+        continue
+      line = f"          {c.get('type')}={c.get('status')}"
+      if c.get("reason"):
+        line += f" ({c['reason']})"
+      if c.get("message"):
+        line += f" — {c['message']}"
+      log.detail("%s", line)
 
   pods = d.get("pods", [])
   if not pods:

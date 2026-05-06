@@ -88,6 +88,60 @@ def test_classify_passes_raw_phase():
   assert s.raw_phase == "Running"
 
 
+def test_classify_suspended_via_spec_is_pending():
+  # Authoritative signal: spec.suspend == True (Kueue toggles this until admit).
+  # Real failure that motivated this test: a JobSet on a TAS-required Kueue flavor
+  # that never gets admitted shows zero pods + spec.suspend=true; previously this
+  # was misclassified as "running" because no terminal condition was set.
+  obj = {
+      "spec": {"suspend": True},
+      "status": {"conditions": []},
+  }
+  s = k8s.classify_jobset(obj)
+  assert s.status == k8s.STATUS_PENDING
+  assert s.reason == "Suspended"
+
+
+def test_classify_suspended_via_condition_is_pending():
+  # Fallback: older JobSet controllers may not toggle spec.suspend on the
+  # observed object but emit a Suspended condition.
+  obj = {
+      "spec": {"suspend": False},
+      "status": {"conditions": [
+          {"type": "Suspended", "status": "True", "reason": "QueuePaused",
+           "message": "queue is paused"},
+      ]},
+  }
+  s = k8s.classify_jobset(obj)
+  assert s.status == k8s.STATUS_PENDING
+  assert s.reason == "QueuePaused"
+  assert s.message == "queue is paused"
+
+
+def test_classify_unsuspended_no_terminal_is_running():
+  # Once Kueue admits, spec.suspend flips to false and there's no terminal
+  # condition yet — must classify as running, not lingering pending.
+  obj = {
+      "spec": {"suspend": False},
+      "status": {"conditions": []},
+  }
+  s = k8s.classify_jobset(obj)
+  assert s.status == k8s.STATUS_RUNNING
+
+
+def test_classify_terminal_takes_priority_over_suspend():
+  # Defensive: if both Completed=True and spec.suspend=True somehow appear,
+  # terminal wins. A successful JobSet shouldn't get masked as pending.
+  obj = {
+      "spec": {"suspend": True},
+      "status": {"conditions": [
+          {"type": "Completed", "status": "True", "reason": "AllJobsCompleted"},
+      ]},
+  }
+  s = k8s.classify_jobset(obj)
+  assert s.status == k8s.STATUS_OK
+
+
 # ---------- get_replicated_jobs_status ----------
 
 

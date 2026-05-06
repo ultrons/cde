@@ -113,6 +113,33 @@ def test_reap_unknown_jobset_marks_evicted(env, monkeypatch):
   assert r.ts_finished is not None
 
 
+def test_reap_refreshes_pending_to_running(env, monkeypatch):
+  # A row that previously refreshed to "pending" (Kueue suspended) must keep
+  # being considered in-flight on the next reap, so that when Kueue admits and
+  # the JobSet starts running we update the DB row. Regression for the bug
+  # where the reap filter only included (submitted, running).
+  hist_path = Path(env) / ".cde" / "history.sqlite"
+  _seed(
+      hist_path,
+      db.Run(run_id="v200", project="p", k8s_namespace="ns",
+             jobset_name="js-pending", status="pending"),
+  )
+
+  def fake_get(namespace, name, *, context=None):
+    return k8s.JobSetStatus(
+        status=k8s.STATUS_RUNNING, reason=None, message=None, raw_phase=None,
+    )
+
+  monkeypatch.setattr(reap_cmd.k8s, "get_jobset_status", fake_get)
+
+  args = argparse.Namespace(all=True, limit=200)
+  rc = reap_cmd.run(args)
+  assert rc == 0
+  with db.open_db(hist_path) as conn:
+    r = db.get_run(conn, "v200")
+  assert r.status == k8s.STATUS_RUNNING
+
+
 def test_reap_skips_runs_without_namespace(env, monkeypatch):
   hist_path = Path(env) / ".cde" / "history.sqlite"
   _seed(
