@@ -420,8 +420,15 @@ def run(args: argparse.Namespace) -> int:
         validate=not args.no_validate,
     )
   except k8s.KubectlError as exc:
+    # The row was inserted on the assumption apply would succeed. Apply never
+    # reached the cluster (or was rejected before any state was created), so
+    # there's nothing on the cluster side this row could refer back to.
+    # Keeping it only blocks the user from retrying with the same --tag,
+    # turning every transient apply failure into a `cde delete --purge` chore.
+    # The kubectl error has already been surfaced via stderr; dropping the row
+    # loses no information that mattered. (Closes #5.)
     with db.open_db(_resolve_history_path(cfg)) as conn:
-      db.set_status(conn, args.tag, "failed", finished=True)
+      db.delete_run(conn, args.tag)
     log.err("%s", exc)
     return 1
 
