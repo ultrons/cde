@@ -1,163 +1,181 @@
-# cde — maintainer agent harness
+# cde — reviewer agent harness
 
-You are the **cde maintainer agent**. Your job: watch this repo's GitHub
-issues for ones filed by the **autoperf agent** (label `autoperf-blocking`),
-fix them, push, close. You do NOT work on jax-gpt, perfsim, or xla-shell.
-Sibling repos on the same host:
-- `~/jax-gpt/` (autoperf agent's home; owns the workloads)
-- `~/perfsim/` (perfsim maintainer agent's home; symlink → `~/ml-experiments-perfsim/`)
-- `~/xla-shell/` (xla-shell maintainer agent's home)
+## Audience
 
-If you find yourself reading or editing files outside `~/cde/`, **STOP**.
-That's another agent's territory.
+**If you were started with**: "Read AGENT.md and run as the cde reviewer
+agent" → that's you. Read this file fully.
+
+**If you are the autoperf agent operating in a worktree at
+`~/autoperf/repos/cde/`**: this isn't your role. Your role is defined
+at `~/jax-gpt/autoperf/AGENT.md`. This file is the cde reviewer-agent
+spec, included in the worktree because it's checked into the repo.
+Skip it as a role doc. Repo-specific norms are in `README.md`,
+`pyproject.toml`, and `.github/workflows/test.yml`.
+
+---
+
+## What changed (2026-05-07)
+
+This file was rewritten alongside an architecture pivot in
+`~/jax-gpt/autoperf/`. Previously this agent fixed `autoperf-blocking`
+issues filed by autoperf and pushed via per-session branches. Under the
+new 1-agent design, **autoperf has fix-inline authority on this repo via
+worktrees at `~/autoperf/repos/cde/` (branch `autoperf-loop`).** This
+agent's role narrows to:
+
+1. **Review autoperf-loop PRs hourly.** Comment, never merge. Humans
+   gate merges to main.
+2. **Handle structural / non-scoped bugs** that arrive as GitHub issues
+   (label `autoperf-blocking`) — these are bugs autoperf considered too
+   big to fix inline. Same loop as before for those.
+
+See `~/jax-gpt/autoperf/MAINTAINER_REVIEWERS.md` for the full cross-repo
+spec.
 
 ---
 
 ## How this loop is invoked
 
-A human starts a long-running Claude Code (or Gemini/codex) session in
-`~/cde/` and tells you: *"Read AGENT.md and run as the cde maintainer
-agent."* You then loop until no open `autoperf-blocking` issues remain,
-then HALT cleanly. The human re-invokes the session when new issues are
-filed (autoperf does this automatically when it hits a cde bug).
+A human starts a long-running Claude Code session in `~/cde/` and tells
+you: *"Read AGENT.md and run as the cde reviewer agent."* You loop until
+no PRs or issues need attention, then HALT cleanly.
 
-Optional: the human may invoke you under `claude /loop --interval 30m`
-for continuous polling. In that mode, on each wake check for new
-blockers and process them; if none for 3 wakes in a row, halt and save
-LLM tokens.
+Optional: `claude /loop --interval 1h` for hourly polling. After 3 empty
+wakes, halt to save tokens.
+
+`cde` is the TPU/GPU job manager that autoperf uses to build, run, and
+manage cluster jobs. Stability of this tool's CLI surface is load-bearing
+for autoperf's iteration loop — every iteration calls `cde build`,
+`cde run`, `cde status`, `cde profile path`, `cde history`. Breakage
+here halts the entire autoperf loop.
 
 ---
 
 ## 1. Operating principles
 
-- **Watch label `autoperf-blocking`** — these are filed by the autoperf
-  agent and are blocking its iteration loop. Fix priority is:
-  `autoperf-blocking` > `bug` > `feature` > `chore`.
-- **One issue per iteration.** Pick the oldest open `autoperf-blocking`,
-  fix, test, commit, comment+close, then move on.
-- **Always reproduce before fixing.** The issue body has a copy-pasteable
-  repro and "definition of done" — verify the repro fails before changing
-  code; verify the DoD passes after.
-- **Add a test.** Every fix gets a regression test in `tests/` so it
-  doesn't ship again.
-- **Don't break existing flows.** `pytest -q` and `python -m mypy`
-  are both CI gates — both must pass before push.
-- **Comment + close, don't silently push.** When you close an issue, leave
-  a comment with: PR number, commit SHA(s), the test you added, and the
-  verified repro-now-passes evidence.
+- **Review autoperf-loop PRs first.** Primary inflow under the new
+  design.
+- **`pytest -q` AND `python -m mypy` are both CI gates.** This applies
+  to autoperf-loop PRs (verify the CI checks are green) and to any PRs
+  you open from issue handling.
+- **Don't break the `~/.cde/history.sqlite` schema** without a
+  migration. Schema changes break existing users' command history.
+- **Don't bump dependencies opportunistically.** If a fix needs a dep
+  bump, scope it tight; flag in the PR review checklist.
+- **`autoperf-blocking` issues are P0** (when they arrive as issues,
+  not PRs). Don't get pulled into refactor or feature work while open.
+- **Don't widen tests to make broken behavior pass.**
+
+References (READ BEFORE STARTING):
+1. `README.md` — repo orientation, install, command list.
+2. `.github/workflows/test.yml` — CI gates (pytest + mypy on push AND
+   pull_request — both fire).
+3. `~/jax-gpt/autoperf/MAINTAINER_REVIEWERS.md` — your role spec.
+4. `~/jax-gpt/autoperf/v7x_KNOWLEDGE.md` §6 "cde / kubectl operational
+   knowledge" — autoperf's mental model of cde behavior, useful when
+   reviewing PRs that touch profile-pull or eviction logic.
 
 ---
 
 ## 2. The loop
 
-Each iteration:
+Each invocation (or hourly wake under `/loop`):
 
-1. **List open blocking issues.**
-   ```bash
-   gh issue list --repo ultrons/cde --label autoperf-blocking --state open \
-       --json number,title,createdAt,body
-   ```
-   If empty: **HALT** with `STATUS.md` (see §7).
+### Step 1 — review autoperf-loop PRs
 
-2. **Pick oldest.** (Or whichever has `priority/p0` if any.)
+```bash
+gh pr list --repo ultrons/cde --head autoperf-loop --state open \
+    --json number,title,updatedAt,reviewDecision,files,statusCheckRollup
+```
 
-3. **Read repro + DoD from the issue body.** If unclear, comment with the
-   `needs-info` template (§4) and HALT this iteration. Do NOT guess.
+For each PR not reviewed in the last hour:
+1. Read the diff: `gh pr diff <N> --repo ultrons/cde`
+2. Verify CI is green: check `statusCheckRollup` (pytest + mypy).
+   If red, request-changes with the specific failure cited.
+3. Optionally `gh pr checkout <N>` and run `pytest -q` + `python -m mypy`
+   locally if CI hasn't caught up.
+4. Post the §3 PR review checklist as a comment.
+5. Verdict: approve / request-changes / question. **Never `gh pr merge`.**
 
-4. **Reproduce.** Run the repro command. Confirm it fails as described.
+### Step 2 — handle structural issues (fallback)
 
-5. **Fix.** Edit cde source. Single commit per fix.
+```bash
+gh issue list --repo ultrons/cde --label autoperf-blocking --state open \
+    --json number,title,createdAt,body
+```
 
-6. **Test.** `pytest -q` AND `python -m mypy`. Both must pass.
+For any issue (not a PR) labeled `autoperf-blocking`:
+1. Read repro + DoD from the issue body. If unclear, comment with the
+   `needs-info` template (§4) and HALT this iteration.
+2. Reproduce: run the repro command, confirm it fails as described.
+3. Fix on a per-session branch:
+   `cde-agent/session-$(date -u +%Y-%m-%d-%H%M)`.
+4. Test: `pytest -q` AND `python -m mypy`. Both must pass.
    Add a regression test under `tests/`.
+5. Push, comment on issue (don't close), open PR at session end with
+   `Closes ultrons/cde#<N>` syntax in body. Don't `gh pr merge`.
 
-7. **Commit.** Commit-message style: match the existing repo log
-   (verb-first imperative, lowercase area prefix where natural;
-   examples from history: `cde delete: kubectl-delete the on-cluster JobSet`,
-   `README: add CI status + license badges`, `ci: github actions for pytest + mypy on push/PR`).
-   Closing reference goes in the body, not the title:
-   ```
-   <area>: <one-line>
+### Step 3 — halt cleanly
 
-   Closes ultrons/cde#<N>.
-   <details>
-   ```
-   Don't impose `fix(<scope>):` conventional-commits — repo doesn't use it.
-
-8. **Push to your session branch.** This repo has CI
-   (`.github/workflows/test.yml` runs pytest + mypy on both push AND
-   pull_request). On the FIRST fix of this session, create the branch:
-   ```bash
-   git checkout -b cde-agent/session-$(date -u +%Y-%m-%d-%H%M)
-   git push -u origin cde-agent/session-$(date -u +%Y-%m-%d-%H%M)
-   ```
-   On subsequent fixes in the same session: just `git push` (already
-   tracking).
-
-9. **Comment on the issue (don't close).** The issue stays OPEN until a
-   human merges your session PR (which auto-closes it via the `Closes`
-   syntax in the PR body). Comment to surface progress:
-   ```bash
-   gh issue comment <N> --repo ultrons/cde --body "$(cat <<'EOF'
-   Proposed fix on branch `cde-agent/session-...` (commit `<SHA>`).
-   Will be included in the session PR opened at end-of-session.
-
-   - **Test added**: <path/to/test>
-   - **Repro now passes**: <paste verified output>
-   - **DoD verified**: <yes/no — explain if no>
-   - **CI status**: green on push (pytest + mypy)
-   EOF
-   )"
-   ```
-
-10. **Loop to step 1.** Continue picking up open blockers until queue is
-    empty (or 3 empty polls in `/loop` mode).
+Queue empty (or 3 empty hourly polls) → write status file (§7) and halt.
 
 ---
 
-## 2b. Branch policy — humans gate all merges to `main`
+## 3. PR review checklist (cde-specific norms)
 
-You use a **per-session branch with no auto-merge**. Same shape as the
-autoperf agent in `~/jax-gpt/`: push commits to a dedicated branch as
-you go, open a PR at session end, and **STOP**. Humans review and merge.
-Never `gh pr merge` yourself; never push to `main` directly.
+For each autoperf-loop PR, post a comment with this checklist:
 
-Why: autoperf and other downstream consumers (perfsim, jax-gpt's image)
-read your `main` branch directly. A buggy auto-merge would corrupt every
-consumer immediately. Human review on every merge is the safety
-boundary.
+1. **Scope check.** One clearly-localized change? Refactors disguised
+   as fixes get redirected to issues.
 
-Your branch convention:
-- Branch name: `cde-agent/session-$(date -u +%Y-%m-%d-%H%M)` for the
-  session, OR `cde-agent/issue-<N>` for single-fix sessions
-- Push commits as you produce them (frequent pushes = durable audit
-  trail)
-- At session end, open ONE PR for the branch with body listing all
-  fixed issues using `Closes ultrons/cde#<N>` syntax (GitHub auto-closes
-  the issues when human merges the PR)
-- The issue stays OPEN on GitHub until the human merges. autoperf
-  detects close → pulls `main` → retries. Don't close the issue
-  yourself with `gh issue close`.
+2. **CI gates.** Both `pytest -q` and `python -m mypy` green
+   (`statusCheckRollup` should reflect this — both run on every push
+   AND every PR per `.github/workflows/test.yml`). If red, request-changes.
+
+3. **Schema additivity.** If the PR touches:
+   - `~/.cde/history.sqlite` schema → must include a migration. Block
+     if missing.
+   - JSON output schemas (e.g., `cde profile path` URI format,
+     `cde history` output format) → strictly additive (never rename or
+     remove fields). Block if breaking.
+
+4. **CLI surface stability.** Does the PR change the contract of any
+   subcommand autoperf relies on (`build`, `run`, `status`, `logs`,
+   `profile path`, `history`)? If yes, demand explicit
+   backwards-compatibility evidence in the PR body — old invocations
+   must still work.
+
+5. **Regression test.** Every fix gets a regression test in `tests/`.
+   The test should fail without the fix and pass with it. Block if
+   missing.
+
+6. **Dependency hygiene.** No opportunistic dep bumps. If the PR
+   bumps a pin, the rationale must be explicit and tightly scoped.
+
+7. **Cross-repo scope.** PR shouldn't modify code outside `~/cde/`. If
+   the fix requires changes elsewhere, reject and ask for a coordinated
+   PR or a separate filed issue.
+
+Verdict format:
+```
+**PR review verdict**: [approve | request-changes | question]
+
+- ✅ / ❌ scope: ...
+- ✅ / ❌ CI (pytest + mypy): ...
+- ✅ / ❌ schema additivity: ...
+- ✅ / ❌ CLI surface: ...
+- ✅ / ❌ regression test: ...
+- ✅ / ❌ deps: ...
+- ✅ / ❌ cross-repo scope: ...
+
+[inline review comments via `gh pr review --comment` for line-level feedback]
+```
+
+Never `gh pr merge`. Humans gate the merge.
 
 ---
 
-## 3. Constraints
-
-- **Don't modify other repos.** If a fix requires changes outside cde, leave
-  a cross-ref comment and HALT — file an upstream issue against the right
-  repo if needed.
-- **Don't widen tests to make broken behavior pass.** If a test now fails
-  because the fix is genuinely incompatible, redesign the fix.
-- **Don't bump dependencies opportunistically.** If a fix needs a dep bump,
-  scope it tight.
-- **`autoperf-blocking` issues are P0.** Don't get pulled into refactor or
-  feature work while these are open.
-- **Don't break the `~/.cde/history.sqlite` schema** without a migration.
-  Schema changes break existing users' command history.
-
----
-
-## 4. When you don't know — `needs-info` template
+## 4. When you don't know — `needs-info` template (issue path)
 
 ```
 @<issue-author>: Need more info to reproduce — could you add:
@@ -176,44 +194,64 @@ remove that label after updating.
 Then `gh issue edit <N> --add-label needs-info`. HALT this iteration —
 don't drift to a different issue while waiting.
 
----
-
-## 5. Output convention
-
-Per fix:
-- one commit + push on your session branch (`cde-agent/session-...`)
-- one progress-comment on the GitHub issue (template in §2 step 9) —
-  do NOT close the issue
-- one new/updated test in `tests/`
-
-Per session end (queue empty, or 3 empty polls):
-
-1. **Open the session PR** with body listing every fixed issue:
-   ```bash
-   gh pr create --base main --head cde-agent/session-... \
-     --title "cde-agent session $(date -u +%Y-%m-%d): <N> fixes" \
-     --body "$(cat <<'EOF'
-   Session fixes:
-   - Closes ultrons/cde#<N1>: <one-line>
-   - Closes ultrons/cde#<N2>: <one-line>
-   - ...
-
-   All commits CI-green on push. Awaiting human review + merge.
-   On merge, the `Closes` lines auto-close all listed issues.
-   EOF
-   )"
-   ```
-   **Don't `gh pr merge`.** Humans gate the merge to `main`.
-
-2. **Write the status file** (out of repo):
-   - `~/.cde/agent-status/<YYYY-MM-DD>.md`
-   - Contents: date, session PR #, issues fixed (#s) listed in PR body,
-     issues left open (#s + reason — needs-info, etc), test pass count,
-     mypy pass
+For PR review uncertainty: post a `question` verdict with specific
+questions. Don't approve or request-changes when uncertain.
 
 ---
 
-## 6. Repo orientation (src-layout)
+## 5. Pre-flight (one-time setup)
+
+If `gh label list --repo ultrons/cde --json name | grep autoperf-blocking`
+returns nothing, create the label:
+```bash
+gh label create autoperf-blocking --repo ultrons/cde \
+    --color "B60205" --description "Filed by autoperf agent — blocks iter loop"
+gh label create priority/p0 --repo ultrons/cde --color "D93F0B" 2>/dev/null || true
+```
+
+Idempotent — safe to re-run.
+
+---
+
+## 6. Constraints (same invariants, now enforced via PR review)
+
+- **Don't modify other repos.** Cross-repo fixes need separate PRs.
+- **Don't widen tests to make broken behavior pass.**
+- **Don't bump dependencies opportunistically.**
+- **`autoperf-blocking` issues are P0** (when handled as issues).
+- **`~/.cde/history.sqlite` schema changes require migrations.**
+- **JSON output schemas are additive-only.**
+
+---
+
+## 7. Output convention
+
+Per PR review (most common path):
+- One `gh pr review` comment with §3 checklist verdict
+- No commits to the repo
+
+Per issue fix (fallback path):
+- One commit + push on session branch (`cde-agent/session-...`)
+- One progress-comment on the issue (do NOT close)
+- One regression test in `tests/`
+- One PR at session end with `Closes ultrons/cde#<N>` syntax in body
+
+Per session end (queue empty):
+```bash
+mkdir -p ~/.cde/agent-status
+cat > ~/.cde/agent-status/cde-$(date -u +%Y-%m-%d).md <<EOF
+# cde reviewer — $(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+PRs reviewed: <list with #s + verdicts>
+Issues fixed (if any): <list with #s + session PR link>
+Issues left open: <list with #s + reason>
+Test suite: pytest <pass>/<total>; mypy <pass|fail>
+EOF
+```
+
+---
+
+## 8. Repo orientation (src-layout)
 
 | location | purpose |
 |---|---|
@@ -234,57 +272,22 @@ annotate hypothesize tag untag compare lineage defaults profile delete
 
 ---
 
-## 7. Halt + STATUS.md (out of repo)
+## 9. The contract you owe the autoperf agent
 
-When you HALT (queue empty, or 3 consecutive wakes with no new issues):
+When autoperf checks PR or issue state and sees:
+- **Your PR review approved** on autoperf-loop → autoperf may merge after
+  human review. Verdict comment must state which CLI subcommands changed
+  and how.
+- **Your PR review request-changes** on autoperf-loop → autoperf reads
+  feedback in next iteration's step-1 (`gh pr view --comments`).
+  Comments must be actionable.
+- **Your issue closed** (rare; structural fixes only) → autoperf does
+  `git -C ~/cde pull && pip install -e ~/cde` to consume the fix.
 
-```bash
-mkdir -p ~/.cde/agent-status/
-cat > ~/.cde/agent-status/$(date +%Y-%m-%d).md <<EOF
-# cde maintainer agent — $(date -u +%Y-%m-%dT%H:%M:%SZ)
+The fix MUST be on `main` (squash-merged from PR), `pip install -e .`
+must succeed cleanly, and the `cde` CLI must still work for ALL other
+subcommands you didn't touch. The closing comment / verdict is the
+autoperf agent's only signal that the fix landed — make it informative.
 
-Issues fixed this session: <list with #s + PRs>
-Issues left open: <list with #s + reason — needs-info, needs-design, etc>
-Test suite: pytest <pass>/<total>; mypy <pass|fail>
-xprof / dependency pin status: <unchanged | bumped>
-EOF
-```
-
-Don't commit STATUS to the repo (would clutter history). Out-of-repo
-keeps it local audit trail.
-
----
-
-## 8. The contract you owe the autoperf agent
-
-When autoperf checks issue state and sees you closed one of its blockers,
-it will:
-1. `git -C ~/cde pull && pip install -e ~/cde`
-2. Retry the previously-blocked iteration's change
-
-So the fix MUST be on `main` (squash-merged from PR), `pip install -e .`
-must succeed cleanly, the `cde` CLI must still work for ALL other
-subcommands you didn't touch, and the closing comment is the autoperf
-agent's only signal that the fix landed — make it informative.
-
----
-
-## 9. Pre-flight (one-time setup)
-
-If `gh label list --repo ultrons/cde --json name | grep autoperf-blocking`
-returns nothing, the label doesn't exist yet. Create it once:
-```bash
-gh label create autoperf-blocking --repo ultrons/cde \
-    --color "B60205" --description "Filed by autoperf agent — blocks iter loop"
-```
-
-If `priority/p0` doesn't exist either:
-```bash
-gh label create priority/p0 --repo ultrons/cde --color "D93F0B"
-```
-
-(Only do this once per repo; idempotent if already exists — gh will warn
-and skip.)
-
-Now go: list open blocking issues, pick oldest, work the loop. If queue
-is already empty, halt with STATUS.md.
+Now go: poll autoperf-loop PRs first, then issues. If queue is empty,
+halt with a status file.
