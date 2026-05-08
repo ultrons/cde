@@ -91,7 +91,12 @@ def make_context_tarball(
     files.append(p)
   files.sort(key=lambda p: str(p.relative_to(context_dir)))
 
-  with tarfile.open(out, "w:gz") as tar:
+  import gzip
+  import os
+
+  # Write deterministic uncompressed tar first in a temporary file
+  temp_tar = out.with_suffix(".tar")
+  with tarfile.open(temp_tar, "w") as tar:
     for p in files:
       rel = p.relative_to(context_dir)
       info = tar.gettarinfo(str(p), arcname=f"{prefix}/{rel.as_posix()}")
@@ -103,6 +108,14 @@ def make_context_tarball(
       info.gname = ""
       with open(p, "rb") as fh:
         tar.addfile(info, fileobj=fh)
+
+  # Compress using Gzip with mtime=0 to ensure exact determinism
+  with open(temp_tar, "rb") as f_in:
+    with gzip.GzipFile(out, "wb", mtime=0) as f_out:
+      shutil.copyfileobj(f_in, f_out)
+
+  # Clean up uncompressed tar file
+  temp_tar.unlink()
 
 
 def context_sha7(tarball: Path, base_digest: str) -> str:
